@@ -12,13 +12,14 @@ from textual.widgets import Button, Footer, Header, Input, Label, Select, Static
 from textual.worker import Worker, WorkerState
 
 from dl_video.components import InputForm, JobsPanel, LogHistoryPanel, SettingsPanel
-from dl_video.models import Config, Job, OperationResult, OperationState
+from dl_video.components.log_history_panel import HistoryEntry
+from dl_video.models import Config, Job, OperationResult, OperationState, VideoMetadata
 from dl_video.services.converter import ConversionError, VideoConverter
 from dl_video.services.downloader import DownloadError, VideoDownloader
 from dl_video.services.uploader import FileUploader, UploadError
 from dl_video.utils.config import ConfigManager
 from dl_video.utils.file_ops import open_file_in_folder, open_folder
-from dl_video.utils.history import HistoryManager, HistoryRecord
+from dl_video.utils.history import HistoryManager, HistoryRecord, MetadataRecord
 from dl_video.utils.slugifier import Slugifier
 
 
@@ -292,6 +293,304 @@ class SettingsScreen(ModalScreen[None]):
         self.dismiss(None)
 
 
+class VideoDetailScreen(ModalScreen[None]):
+    """Modal screen showing video metadata details."""
+
+    DEFAULT_CSS = """
+    VideoDetailScreen {
+        align: center middle;
+    }
+    
+    VideoDetailScreen > Container {
+        width: 70;
+        height: auto;
+        max-height: 80%;
+        border: thick $accent;
+        background: $surface;
+        padding: 1 2;
+    }
+    
+    VideoDetailScreen .detail-title {
+        text-style: bold;
+        color: $accent;
+        margin-bottom: 1;
+    }
+    
+    VideoDetailScreen .detail-section {
+        margin-bottom: 1;
+    }
+    
+    VideoDetailScreen .detail-label {
+        color: $text-muted;
+        width: 14;
+    }
+    
+    VideoDetailScreen .detail-value {
+        color: $text;
+        width: 1fr;
+    }
+    
+    VideoDetailScreen .detail-row {
+        height: auto;
+    }
+    
+    VideoDetailScreen .detail-description {
+        color: $text;
+        height: auto;
+        max-height: 6;
+        overflow-y: auto;
+        padding: 0;
+        margin-top: 0;
+    }
+    
+    VideoDetailScreen .detail-tags {
+        color: $primary;
+        height: auto;
+    }
+    
+    VideoDetailScreen .detail-url {
+        color: $primary;
+        text-style: underline;
+        width: 1fr;
+    }
+    
+    VideoDetailScreen .thumbnail-container {
+        height: 16;
+        width: 100%;
+        margin-bottom: 1;
+    }
+    
+    VideoDetailScreen .thumbnail-loading {
+        color: $text-muted;
+        text-align: center;
+        height: 16;
+        content-align: center middle;
+    }
+
+    VideoDetailScreen .buttons {
+        height: auto;
+        align: center middle;
+        margin-top: 1;
+    }
+    """
+
+    BINDINGS = [
+        Binding("escape", "close", "Close"),
+    ]
+
+    def __init__(self, entry: HistoryEntry) -> None:
+        super().__init__()
+        self._entry = entry
+        self._thumbnail_widget = None
+
+    def compose(self) -> ComposeResult:
+        entry = self._entry
+        meta = entry.metadata
+        
+        with Container():
+            yield Label("📹 Video Details", classes="detail-title")
+            
+            # Thumbnail placeholder - will be loaded async
+            if meta and meta.thumbnail_url:
+                yield Container(
+                    Static("Loading thumbnail...", classes="thumbnail-loading", id="thumbnail-placeholder"),
+                    classes="thumbnail-container",
+                    id="thumbnail-container",
+                )
+            
+            # Basic info
+            with Horizontal(classes="detail-row"):
+                yield Label("Title:", classes="detail-label")
+                yield Label(entry.filename, classes="detail-value")
+            
+            if meta:
+                if meta.uploader:
+                    with Horizontal(classes="detail-row"):
+                        yield Label("Uploader:", classes="detail-label")
+                        yield Label(meta.uploader, classes="detail-value")
+                
+                if meta.channel and meta.channel != meta.uploader:
+                    with Horizontal(classes="detail-row"):
+                        yield Label("Channel:", classes="detail-label")
+                        yield Label(meta.channel, classes="detail-value")
+                
+                if meta.formatted_duration:
+                    with Horizontal(classes="detail-row"):
+                        yield Label("Duration:", classes="detail-label")
+                        yield Label(meta.formatted_duration, classes="detail-value")
+                
+                if meta.formatted_upload_date:
+                    with Horizontal(classes="detail-row"):
+                        yield Label("Uploaded:", classes="detail-label")
+                        yield Label(meta.formatted_upload_date, classes="detail-value")
+                
+                if meta.resolution:
+                    with Horizontal(classes="detail-row"):
+                        yield Label("Resolution:", classes="detail-label")
+                        res_text = meta.resolution
+                        if meta.fps:
+                            res_text += f" @ {meta.fps:.0f}fps"
+                        yield Label(res_text, classes="detail-value")
+                
+                if meta.formatted_views:
+                    with Horizontal(classes="detail-row"):
+                        yield Label("Views:", classes="detail-label")
+                        yield Label(meta.formatted_views, classes="detail-value")
+                
+                if meta.like_count is not None:
+                    with Horizontal(classes="detail-row"):
+                        yield Label("Likes:", classes="detail-label")
+                        yield Label(f"{meta.like_count:,}", classes="detail-value")
+                
+                if meta.extractor:
+                    with Horizontal(classes="detail-row"):
+                        yield Label("Platform:", classes="detail-label")
+                        yield Label(meta.extractor.title(), classes="detail-value")
+                
+                if meta.vcodec or meta.acodec:
+                    with Horizontal(classes="detail-row"):
+                        yield Label("Codecs:", classes="detail-label")
+                        codecs = []
+                        if meta.vcodec and meta.vcodec != "none":
+                            codecs.append(f"V: {meta.vcodec}")
+                        if meta.acodec and meta.acodec != "none":
+                            codecs.append(f"A: {meta.acodec}")
+                        yield Label(" | ".join(codecs) if codecs else "-", classes="detail-value")
+                
+                if meta.tags:
+                    with Horizontal(classes="detail-row"):
+                        yield Label("Tags:", classes="detail-label")
+                        yield Label(", ".join(meta.tags[:5]), classes="detail-tags")
+                
+                if meta.thumbnail_url:
+                    with Horizontal(classes="detail-row"):
+                        yield Label("Thumbnail:", classes="detail-label")
+                        yield Static(meta.thumbnail_url, classes="detail-url", id="thumbnail-url")
+                
+                if meta.description:
+                    yield Label("Description:", classes="detail-label")
+                    # Truncate long descriptions
+                    desc = meta.description[:500]
+                    if len(meta.description) > 500:
+                        desc += "..."
+                    yield Static(desc, classes="detail-description")
+            
+            # File info
+            with Horizontal(classes="detail-row"):
+                yield Label("Source:", classes="detail-label")
+                yield Label(entry.source_url, classes="detail-value")
+            
+            if entry.upload_url:
+                with Horizontal(classes="detail-row"):
+                    yield Label("Upload URL:", classes="detail-label")
+                    yield Label(entry.upload_url, classes="detail-value")
+            
+            with Horizontal(classes="buttons"):
+                yield Button("Close", id="close-btn", variant="primary")
+
+    def on_mount(self) -> None:
+        """Load thumbnail when screen mounts."""
+        if self._entry.metadata and self._entry.metadata.thumbnail_url:
+            self.run_worker(self._load_thumbnail(), exclusive=True)
+
+    def _get_best_thumbnail_url(self, url: str) -> str:
+        """Try to get highest quality thumbnail URL.
+        
+        YouTube thumbnails come in various sizes:
+        - default.jpg (120x90)
+        - mqdefault.jpg (320x180)
+        - hqdefault.jpg (480x360)
+        - sddefault.jpg (640x480)
+        - maxresdefault.jpg (1280x720)
+        """
+        # Try to upgrade YouTube thumbnails to max resolution
+        if "ytimg.com" in url or "youtube.com" in url:
+            for quality in ["default", "mqdefault", "hqdefault", "sddefault"]:
+                if quality in url:
+                    return url.replace(quality, "maxresdefault")
+        return url
+
+    async def _load_thumbnail(self) -> None:
+        """Fetch and display thumbnail image."""
+        import httpx
+        from io import BytesIO
+        
+        try:
+            from textual_image.widget import Image as ImageWidget
+        except ImportError as e:
+            # textual-image not available, show URL instead
+            self._show_thumbnail_fallback(f"Import error: {e}")
+            return
+        
+        meta = self._entry.metadata
+        if not meta or not meta.thumbnail_url:
+            return
+        
+        try:
+            # Try to get highest quality thumbnail
+            thumbnail_url = self._get_best_thumbnail_url(meta.thumbnail_url)
+            
+            async with httpx.AsyncClient(follow_redirects=True) as client:
+                response = await client.get(thumbnail_url, timeout=10.0)
+                
+                # If maxres fails, fall back to original URL
+                if response.status_code == 404 and thumbnail_url != meta.thumbnail_url:
+                    response = await client.get(meta.thumbnail_url, timeout=10.0)
+                
+                response.raise_for_status()
+                
+                from PIL import Image as PILImage
+                image = PILImage.open(BytesIO(response.content))
+                
+                # Convert to RGB if needed (some images are RGBA or palette)
+                if image.mode not in ('RGB', 'L'):
+                    image = image.convert('RGB')
+                
+                # Replace placeholder with actual image
+                container = self.query_one("#thumbnail-container", Container)
+                placeholder = self.query_one("#thumbnail-placeholder", Static)
+                placeholder.remove()
+                
+                img_widget = ImageWidget(image)
+                container.mount(img_widget)
+        except Exception as e:
+            # On any error, show fallback with error info
+            self._show_thumbnail_fallback(str(e))
+
+    def _show_thumbnail_fallback(self, error: str = "") -> None:
+        """Show thumbnail URL as fallback."""
+        try:
+            placeholder = self.query_one("#thumbnail-placeholder", Static)
+            meta = self._entry.metadata
+            if meta and meta.thumbnail_url:
+                if error:
+                    placeholder.update(f"[red]Error: {error[:50]}[/red]\n[link={meta.thumbnail_url}]🖼 View thumbnail[/link]")
+                else:
+                    placeholder.update(f"[link={meta.thumbnail_url}]🖼 View thumbnail[/link]")
+        except Exception:
+            pass
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        if event.button.id == "close-btn":
+            self.dismiss(None)
+
+    def on_click(self, event) -> None:
+        """Handle click on thumbnail to open in browser."""
+        widget = event.widget
+        # Check for thumbnail URL click
+        if isinstance(widget, Static) and widget.id == "thumbnail-url":
+            import webbrowser
+            if self._entry.metadata and self._entry.metadata.thumbnail_url:
+                webbrowser.open(self._entry.metadata.thumbnail_url)
+        # Check for thumbnail placeholder click (fallback mode)
+        elif isinstance(widget, Static) and widget.id == "thumbnail-placeholder":
+            import webbrowser
+            if self._entry.metadata and self._entry.metadata.thumbnail_url:
+                webbrowser.open(self._entry.metadata.thumbnail_url)
+
+    def action_close(self) -> None:
+        self.dismiss(None)
+
 
 class DLVideoApp(App):
     """Main Textual application for video downloading."""
@@ -346,6 +645,7 @@ class DLVideoApp(App):
                 source_url=record.source_url,
                 upload_url=record.upload_url,
                 file_size=record.file_size,
+                metadata=record.metadata,
                 from_history=True,
             )
 
@@ -496,6 +796,10 @@ class DLVideoApp(App):
         """Handle URL click in log - copy to clipboard."""
         self.copy_to_clipboard(event.url)
         self.notify("URL copied to clipboard!", severity="information")
+
+    def on_log_history_panel_info_requested(self, event: LogHistoryPanel.InfoRequested) -> None:
+        """Handle info icon click - show video details modal."""
+        self.push_screen(VideoDetailScreen(event.entry))
 
     def _start_job(self, url: str, custom_filename: str | None) -> None:
         """Start a new download job."""
@@ -665,12 +969,35 @@ class DLVideoApp(App):
             self._last_output_path = output_path
             
             # Add to history UI
+            # Convert VideoMetadata to MetadataRecord for storage
+            metadata_record = MetadataRecord(
+                title=metadata.title,
+                duration=metadata.duration,
+                uploader=metadata.uploader,
+                uploader_id=metadata.uploader_id,
+                channel=metadata.channel,
+                view_count=metadata.view_count,
+                like_count=metadata.like_count,
+                comment_count=metadata.comment_count,
+                upload_date=metadata.upload_date,
+                description=metadata.description,
+                tags=metadata.tags,
+                categories=metadata.categories,
+                resolution=metadata.resolution,
+                fps=metadata.fps,
+                vcodec=metadata.vcodec,
+                acodec=metadata.acodec,
+                thumbnail_url=metadata.thumbnail_url,
+                extractor=metadata.extractor,
+            )
+            
             log_panel.add_entry(
                 filename=output_path.name,
                 file_path=output_path,
                 source_url=job.url,
                 upload_url=upload_url,
                 file_size=file_size,
+                metadata=metadata_record,
             )
             
             # Persist to history file
@@ -680,6 +1007,7 @@ class DLVideoApp(App):
                 file_path=output_path,
                 file_size=file_size,
                 upload_url=upload_url,
+                metadata=metadata_record,
             ))
             
             temp_files.clear()

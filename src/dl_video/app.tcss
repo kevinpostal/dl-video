@@ -370,6 +370,17 @@ LogHistoryPanel .history-num {
     padding: 0 1;
 }
 
+LogHistoryPanel .history-info {
+    width: 2;
+    color: $accent;
+    text-align: center;
+}
+
+LogHistoryPanel .history-info:hover {
+    color: $primary;
+    text-style: bold;
+}
+
 LogHistoryPanel .history-file {
     width: 40;
     color: $text;

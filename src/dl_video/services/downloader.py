@@ -43,7 +43,7 @@ class VideoDownloader:
             url: The video URL to fetch metadata for.
 
         Returns:
-            VideoMetadata object with title, duration, uploader, and url.
+            VideoMetadata object with all available metadata.
 
         Raises:
             DownloadError: If metadata fetch fails.
@@ -76,11 +76,35 @@ class VideoDownloader:
                 raise DownloadError(f"Failed to fetch metadata: {error_msg}")
 
             data = json.loads(stdout.decode())
+            
+            # Extract resolution from format info
+            resolution = None
+            width = data.get("width")
+            height = data.get("height")
+            if width and height:
+                resolution = f"{width}x{height}"
+            
             return VideoMetadata(
                 title=data.get("title", "Unknown"),
+                url=url,
                 duration=data.get("duration", 0) or 0,
                 uploader=data.get("uploader", "Unknown") or "Unknown",
-                url=url,
+                uploader_id=data.get("uploader_id"),
+                channel=data.get("channel"),
+                channel_id=data.get("channel_id"),
+                view_count=data.get("view_count"),
+                like_count=data.get("like_count"),
+                comment_count=data.get("comment_count"),
+                upload_date=data.get("upload_date"),
+                description=data.get("description"),
+                tags=data.get("tags"),
+                categories=data.get("categories"),
+                resolution=resolution,
+                fps=data.get("fps"),
+                vcodec=data.get("vcodec"),
+                acodec=data.get("acodec"),
+                thumbnail_url=data.get("thumbnail"),
+                extractor=data.get("extractor"),
             )
         except json.JSONDecodeError as e:
             raise DownloadError(f"Failed to parse metadata: {e}")

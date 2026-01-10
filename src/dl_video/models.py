@@ -73,10 +73,69 @@ class Job:
 class VideoMetadata:
     """Metadata for a video."""
 
+    # Basic info
     title: str
-    duration: int  # seconds
-    uploader: str
     url: str
+    duration: int  # seconds
+    
+    # Creator info
+    uploader: str
+    uploader_id: str | None = None
+    channel: str | None = None
+    channel_id: str | None = None
+    
+    # Engagement
+    view_count: int | None = None
+    like_count: int | None = None
+    comment_count: int | None = None
+    
+    # Dates
+    upload_date: str | None = None  # YYYYMMDD format
+    
+    # Content info
+    description: str | None = None
+    tags: list[str] | None = None
+    categories: list[str] | None = None
+    
+    # Technical info
+    resolution: str | None = None  # e.g., "1920x1080"
+    fps: float | None = None
+    vcodec: str | None = None
+    acodec: str | None = None
+    
+    # Thumbnail
+    thumbnail_url: str | None = None
+    
+    # Platform
+    extractor: str | None = None  # e.g., "youtube", "twitter"
+
+    @property
+    def formatted_duration(self) -> str:
+        """Format duration as HH:MM:SS or MM:SS."""
+        if self.duration < 3600:
+            return f"{self.duration // 60}:{self.duration % 60:02d}"
+        hours = self.duration // 3600
+        minutes = (self.duration % 3600) // 60
+        seconds = self.duration % 60
+        return f"{hours}:{minutes:02d}:{seconds:02d}"
+
+    @property
+    def formatted_upload_date(self) -> str | None:
+        """Format upload date as YYYY-MM-DD."""
+        if not self.upload_date or len(self.upload_date) != 8:
+            return None
+        return f"{self.upload_date[:4]}-{self.upload_date[4:6]}-{self.upload_date[6:]}"
+
+    @property
+    def formatted_views(self) -> str | None:
+        """Format view count with K/M suffix."""
+        if self.view_count is None:
+            return None
+        if self.view_count >= 1_000_000:
+            return f"{self.view_count / 1_000_000:.1f}M"
+        if self.view_count >= 1_000:
+            return f"{self.view_count / 1_000:.1f}K"
+        return str(self.view_count)
 
 
 @dataclass

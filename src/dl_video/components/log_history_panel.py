@@ -1,6 +1,6 @@
 """Combined log and history panel with tabs."""
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 
@@ -8,6 +8,8 @@ from textual.app import ComposeResult
 from textual.containers import Container, Horizontal, VerticalScroll
 from textual.message import Message
 from textual.widgets import Static, TabbedContent, TabPane
+
+from dl_video.utils.history import MetadataRecord
 
 
 @dataclass
@@ -20,6 +22,7 @@ class HistoryEntry:
     upload_url: str | None
     file_size: int | None
     timestamp: datetime
+    metadata: MetadataRecord | None = None
 
 
 class LogLine(Horizontal):
@@ -46,6 +49,13 @@ class LogLine(Horizontal):
 class HistoryRow(Horizontal):
     """A single history row."""
 
+    class InfoClicked(Message):
+        """Message sent when info icon is clicked."""
+
+        def __init__(self, entry: HistoryEntry) -> None:
+            self.entry = entry
+            super().__init__()
+
     def __init__(self, entry: HistoryEntry, index: int) -> None:
         super().__init__(classes="history-row")
         self._entry = entry
@@ -53,6 +63,11 @@ class HistoryRow(Horizontal):
 
     def compose(self) -> ComposeResult:
         yield Static(str(self._index), classes="history-num")
+        # Show info icon if metadata available
+        if self._entry.metadata:
+            yield Static("ℹ", classes="history-info")
+        else:
+            yield Static(" ", classes="history-info")
         yield Static(self._entry.filename, classes="history-file")
         yield Static(self._entry.source_url, classes="history-source")
         yield Static(self._format_size(self._entry.file_size), classes="history-size")
@@ -70,6 +85,13 @@ class HistoryRow(Horizontal):
 
 class LogHistoryPanel(Container):
     """Combined panel with tabs for Log and History views."""
+
+    class InfoRequested(Message):
+        """Message sent when info icon is clicked."""
+
+        def __init__(self, entry: HistoryEntry) -> None:
+            self.entry = entry
+            super().__init__()
 
     class EntrySelected(Message):
         """Message sent when a history entry is selected."""
@@ -99,6 +121,7 @@ class LogHistoryPanel(Container):
                 yield Static("No downloads yet", id="history-empty", classes="history-empty")
                 yield Horizontal(
                     Static("#", classes="history-num history-header"),
+                    Static("", classes="history-info history-header"),
                     Static("File", classes="history-file history-header"),
                     Static("Source", classes="history-source history-header"),
                     Static("Size", classes="history-size history-header"),
@@ -156,12 +179,20 @@ class LogHistoryPanel(Container):
                 self.post_message(self.UrlClicked(parent.url))
                 return
         
-        # Check for history row
-        while widget is not None:
-            if isinstance(widget, HistoryRow):
-                self.post_message(self.EntrySelected(widget._entry))
+        # Check if clicked on info icon
+        if isinstance(widget, Static) and "history-info" in widget.classes:
+            parent = widget.parent
+            if isinstance(parent, HistoryRow) and parent._entry.metadata:
+                self.post_message(self.InfoRequested(parent._entry))
+                return
+        
+        # Check for history row (copy URL on click)
+        row_widget = widget
+        while row_widget is not None:
+            if isinstance(row_widget, HistoryRow):
+                self.post_message(self.EntrySelected(row_widget._entry))
                 break
-            widget = widget.parent
+            row_widget = row_widget.parent
 
     def add_entry(
         self,
@@ -170,6 +201,7 @@ class LogHistoryPanel(Container):
         source_url: str = "",
         upload_url: str | None = None,
         file_size: int | None = None,
+        metadata: MetadataRecord | None = None,
         from_history: bool = False,
     ) -> None:
         """Add a new entry to the history.
@@ -184,6 +216,7 @@ class LogHistoryPanel(Container):
             upload_url=upload_url,
             file_size=file_size,
             timestamp=datetime.now(),
+            metadata=metadata,
         )
         
         # Show list and header, hide empty message
