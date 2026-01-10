@@ -52,6 +52,7 @@ class HistoryRow(Horizontal):
         self._index = index
 
     def compose(self) -> ComposeResult:
+        yield Static(str(self._index), classes="history-num")
         yield Static(self._entry.filename, classes="history-file")
         yield Static(self._entry.source_url, classes="history-source")
         yield Static(self._format_size(self._entry.file_size), classes="history-size")
@@ -96,7 +97,20 @@ class LogHistoryPanel(Container):
                 yield VerticalScroll(id="log-scroll")
             with TabPane("History", id="history-tab"):
                 yield Static("No downloads yet", id="history-empty", classes="history-empty")
+                yield Horizontal(
+                    Static("#", classes="history-num history-header"),
+                    Static("File", classes="history-file history-header"),
+                    Static("Source", classes="history-source history-header"),
+                    Static("Size", classes="history-size history-header"),
+                    id="history-header-row",
+                    classes="history-header-row",
+                )
                 yield VerticalScroll(id="history-list")
+
+    def on_mount(self) -> None:
+        """Hide header initially."""
+        self.query_one("#history-header-row").display = False
+        self.query_one("#history-list").display = False
 
     def _add_log_line(self, content: str, url: str | None = None, css_class: str = "") -> None:
         """Add a line to the log."""
@@ -156,8 +170,13 @@ class LogHistoryPanel(Container):
         source_url: str = "",
         upload_url: str | None = None,
         file_size: int | None = None,
+        from_history: bool = False,
     ) -> None:
-        """Add a new entry to the history."""
+        """Add a new entry to the history.
+        
+        Args:
+            from_history: If True, this is being loaded from saved history (append to end)
+        """
         entry = HistoryEntry(
             filename=filename,
             file_path=file_path,
@@ -166,16 +185,23 @@ class LogHistoryPanel(Container):
             file_size=file_size,
             timestamp=datetime.now(),
         )
-        self._entries.insert(0, entry)
-
-        # Show list, hide empty message
+        
+        # Show list and header, hide empty message
         history_list = self.query_one("#history-list", VerticalScroll)
         history_list.display = True
+        self.query_one("#history-header-row").display = True
         self.query_one("#history-empty").display = False
 
-        # Add new row at top
-        row = HistoryRow(entry, len(self._entries) - 1)
-        history_list.mount(row, before=0)
+        if from_history:
+            # Loading from saved history - append to end, use next ID
+            self._entries.append(entry)
+            row = HistoryRow(entry, len(self._entries))
+            history_list.mount(row)
+        else:
+            # New entry - insert at beginning with new highest ID
+            self._entries.insert(0, entry)
+            row = HistoryRow(entry, len(self._entries))
+            history_list.mount(row, before=0)
 
     def get_entries(self) -> list[HistoryEntry]:
         """Get all history entries."""
@@ -187,4 +213,5 @@ class LogHistoryPanel(Container):
         history_list = self.query_one("#history-list", VerticalScroll)
         history_list.remove_children()
         history_list.display = False
+        self.query_one("#history-header-row").display = False
         self.query_one("#history-empty").display = True

@@ -342,6 +342,17 @@ LogHistoryPanel #history-list {
     height: 1fr;
 }
 
+LogHistoryPanel .history-header-row {
+    height: 1;
+    width: 100%;
+    background: $surface;
+}
+
+LogHistoryPanel .history-header {
+    text-style: bold;
+    color: $text-muted;
+}
+
 LogHistoryPanel .history-row {
     height: 1;
     width: 100%;
@@ -352,9 +363,15 @@ LogHistoryPanel .history-row:hover {
     background: $surface-lighten-1;
 }
 
+LogHistoryPanel .history-num {
+    width: 4;
+    color: $text-muted;
+    text-align: right;
+    padding: 0 1;
+}
+
 LogHistoryPanel .history-file {
-    width: auto;
-    min-width: 20;
+    width: 40;
     color: $text;
     padding: 0 1;
 }

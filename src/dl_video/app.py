@@ -18,6 +18,7 @@ from dl_video.services.downloader import DownloadError, VideoDownloader
 from dl_video.services.uploader import FileUploader, UploadError
 from dl_video.utils.config import ConfigManager
 from dl_video.utils.file_ops import open_file_in_folder, open_folder
+from dl_video.utils.history import HistoryManager, HistoryRecord
 from dl_video.utils.slugifier import Slugifier
 
 
@@ -314,6 +315,7 @@ class DLVideoApp(App):
         self.initial_url = initial_url
         self._config_manager = ConfigManager()
         self._config = self._config_manager.load()
+        self._history_manager = HistoryManager()
         self._slugifier = Slugifier()
         self._last_output_path: Path | None = None
         self._last_upload_url: str | None = None
@@ -335,12 +337,24 @@ class DLVideoApp(App):
         log_panel = self.query_one(LogHistoryPanel)
         log_panel.log_info("Welcome to dl-video!")
         log_panel.log_info("Enter a video URL and press Enter. You can queue multiple downloads.")
+        
+        # Load history into UI
+        for record in self._history_manager.get_all():
+            log_panel.add_entry(
+                filename=record.filename,
+                file_path=Path(record.file_path),
+                source_url=record.source_url,
+                upload_url=record.upload_url,
+                file_size=record.file_size,
+                from_history=True,
+            )
 
     def get_system_commands(self, screen: Screen) -> Iterable[SystemCommand]:
         yield from super().get_system_commands(screen)
         yield SystemCommand("Settings", "Open settings", self.action_open_settings)
         yield SystemCommand("Open download folder", "Open the download folder", self.action_open_folder)
         yield SystemCommand("Clear log", "Clear all log messages", self.action_clear_log)
+        yield SystemCommand("Clear history", "Clear all download history", self.action_clear_history)
         if self._last_output_path and self._last_output_path.exists():
             yield SystemCommand(
                 "Reveal last download",
@@ -402,6 +416,13 @@ class DLVideoApp(App):
             self.notify("URL copied!", severity="information")
         else:
             self.notify("No upload URL to copy", severity="warning")
+
+    def action_clear_history(self) -> None:
+        """Clear all download history."""
+        self._history_manager.clear()
+        log_panel = self.query_one(LogHistoryPanel)
+        log_panel.clear_history()
+        self.notify("History cleared", severity="information")
 
     def _cancel_all_jobs(self) -> None:
         """Cancel all running jobs."""
@@ -643,7 +664,7 @@ class DLVideoApp(App):
             
             self._last_output_path = output_path
             
-            # Add to history
+            # Add to history UI
             log_panel.add_entry(
                 filename=output_path.name,
                 file_path=output_path,
@@ -651,6 +672,15 @@ class DLVideoApp(App):
                 upload_url=upload_url,
                 file_size=file_size,
             )
+            
+            # Persist to history file
+            self._history_manager.add(HistoryRecord.create(
+                filename=output_path.name,
+                source_url=job.url,
+                file_path=output_path,
+                file_size=file_size,
+                upload_url=upload_url,
+            ))
             
             temp_files.clear()
             return OperationResult(success=True, output_path=output_path, upload_url=upload_url, file_size=file_size)
