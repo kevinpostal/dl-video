@@ -1,0 +1,476 @@
+/* dl-video - Ultra-compact responsive design for small terminals */
+
+Screen {
+    background: $background;
+}
+
+/* Main container - fills screen */
+#main-container {
+    width: 100%;
+    height: 100%;
+    padding: 0;
+}
+
+#content-area {
+    width: 100%;
+    height: 100%;
+}
+
+/* ============================================
+   Input Form - Minimal height
+   ============================================ */
+InputForm {
+    height: auto;
+    padding: 1;
+    background: $surface;
+    border-bottom: solid $primary;
+}
+
+InputForm .form-title {
+    display: none;
+}
+
+InputForm .field-label {
+    display: none;
+}
+
+InputForm Input {
+    margin-bottom: 1;
+}
+
+InputForm #url-row {
+    height: 3;
+    width: 100%;
+}
+
+InputForm #url-row Input {
+    width: 1fr;
+    margin-bottom: 0;
+}
+
+InputForm #clear-btn {
+    width: 3;
+    min-width: 3;
+    height: 3;
+    margin-left: 0;
+    border: none;
+    background: $surface-darken-1;
+    color: $text-muted;
+}
+
+InputForm #clear-btn.hidden {
+    display: none;
+}
+
+InputForm #clear-btn:hover {
+    background: $error;
+    color: $text;
+}
+
+InputForm .validation-message {
+    height: 1;
+    margin: 0;
+    padding: 0;
+}
+
+InputForm .validation-error { color: $error; }
+InputForm .validation-warning { color: $warning; }
+InputForm .validation-success { color: $success; }
+
+InputForm .filename-toggle {
+    color: $text-muted;
+    height: 1;
+    margin: 0;
+    padding: 0;
+}
+
+InputForm .filename-toggle:hover {
+    color: $primary;
+    text-style: underline;
+}
+
+InputForm .filename-container {
+    height: auto;
+    margin: 0;
+    padding: 0;
+}
+
+InputForm .filename-container.hidden {
+    display: none;
+}
+
+InputForm .filename-container Input {
+    margin-bottom: 0;
+}
+
+InputForm #download-btn {
+    width: 5;
+    min-width: 5;
+    height: 3;
+    margin-left: 1;
+}
+
+InputForm #download-btn:disabled {
+    opacity: 0.5;
+}
+
+/* ============================================
+   Progress Panel - Hidden (replaced by JobsPanel)
+   ============================================ */
+ProgressPanel {
+    display: none;
+}
+
+/* ============================================
+   Settings Panel - Collapsed, minimal
+   ============================================ */
+SettingsPanel {
+    height: auto;
+    background: $surface;
+    border-bottom: solid $accent;
+}
+
+SettingsPanel Collapsible {
+    padding: 0;
+    background: transparent;
+}
+
+SettingsPanel CollapsibleTitle {
+    color: $accent;
+    padding: 0 1;
+    height: 1;
+}
+
+SettingsPanel Contents {
+    padding: 0 1;
+    height: auto;
+}
+
+SettingsPanel .setting-row {
+    height: auto;
+    margin: 0;
+}
+
+SettingsPanel .setting-row Switch {
+    margin-right: 1;
+}
+
+SettingsPanel .setting-row Label {
+    color: $text;
+}
+
+SettingsPanel .setting-row Select {
+    width: 12;
+    margin-left: 1;
+}
+
+SettingsPanel .dir-label {
+    color: $text-muted;
+    height: 1;
+}
+
+SettingsPanel #download-dir {
+    margin: 0;
+    height: 3;
+}
+
+/* ============================================
+   Jobs Panel - Multiple concurrent downloads
+   ============================================ */
+JobsPanel {
+    height: auto;
+    max-height: 12;
+    background: $surface;
+    border-bottom: solid $secondary;
+}
+
+JobsPanel.hidden {
+    display: none;
+}
+
+JobsPanel #jobs-list {
+    height: auto;
+    max-height: 10;
+    padding: 0;
+}
+
+JobsPanel .job-row {
+    height: 1;
+    width: 100%;
+    margin: 0;
+    padding: 0;
+    background: $surface-darken-1;
+}
+
+JobsPanel .job-row.completed {
+    background: $success 10%;
+}
+
+JobsPanel .job-row.error {
+    background: $error 10%;
+}
+
+JobsPanel .job-row.cancelled {
+    background: $warning 10%;
+}
+
+JobsPanel .job-name {
+    width: 1fr;
+    padding: 0 1;
+    height: 1;
+    content-align: left middle;
+}
+
+JobsPanel .job-progress {
+    width: 30;
+    padding: 0;
+    height: 1;
+}
+
+JobsPanel .job-progress Bar {
+    width: 100%;
+    background: $surface-darken-2;
+}
+
+JobsPanel .job-progress Bar > .bar--bar {
+    color: $success;
+}
+
+JobsPanel .job-progress Bar > .bar--complete {
+    color: $success;
+}
+
+JobsPanel .job-status {
+    width: 6;
+    height: 1;
+    content-align: center middle;
+}
+
+JobsPanel .job-cancel-btn {
+    width: 3;
+    min-width: 3;
+    height: 1;
+    border: none;
+    background: transparent;
+    color: $error;
+}
+
+JobsPanel .job-cancel-btn:hover {
+    background: $error;
+    color: $text;
+}
+
+JobsPanel .job-cancel-btn:disabled {
+    opacity: 0.3;
+}
+
+/* ============================================
+   Log/History Panel - Tabbed interface
+   ============================================ */
+LogHistoryPanel {
+    height: 1fr;
+    min-height: 8;
+    background: $surface;
+}
+
+LogHistoryPanel TabbedContent {
+    height: 1fr;
+}
+
+LogHistoryPanel ContentSwitcher {
+    height: 1fr;
+}
+
+LogHistoryPanel TabPane {
+    height: 1fr;
+    padding: 0;
+}
+
+LogHistoryPanel Tabs {
+    height: 3;
+    background: $surface;
+    dock: top;
+}
+
+LogHistoryPanel Tab {
+    padding: 0 2;
+    background: $surface-darken-1;
+}
+
+LogHistoryPanel Tab.-active {
+    background: $surface;
+    color: $primary;
+}
+
+LogHistoryPanel Tab:hover {
+    background: $surface-lighten-1;
+}
+
+LogHistoryPanel #log-scroll {
+    height: 1fr;
+    padding: 0 1;
+    background: $surface-darken-1;
+    scrollbar-size: 1 1;
+}
+
+LogHistoryPanel .log-line {
+    height: 1;
+    width: 100%;
+}
+
+LogHistoryPanel .log-text {
+    width: auto;
+}
+
+LogHistoryPanel .log-url {
+    width: auto;
+    color: $primary;
+    text-style: underline;
+}
+
+LogHistoryPanel .log-url:hover {
+    background: $surface-lighten-1;
+}
+
+LogHistoryPanel .history-empty {
+    color: $text-muted;
+    text-align: center;
+    padding: 2;
+}
+
+LogHistoryPanel #history-list {
+    height: 1fr;
+}
+
+LogHistoryPanel .history-row {
+    height: 1;
+    width: 100%;
+    background: $surface-darken-1;
+}
+
+LogHistoryPanel .history-row:hover {
+    background: $surface-lighten-1;
+}
+
+LogHistoryPanel .history-file {
+    width: auto;
+    min-width: 20;
+    color: $text;
+    padding: 0 1;
+}
+
+LogHistoryPanel .history-source {
+    width: 1fr;
+    color: $text-muted;
+    padding: 0 1;
+}
+
+LogHistoryPanel .history-size {
+    width: auto;
+    min-width: 10;
+    text-align: right;
+    color: $text;
+    padding: 0 1;
+}
+
+/* ============================================
+   Modals - Compact
+   ============================================ */
+OverwriteConfirmScreen, UploadPromptScreen {
+    align: center middle;
+    background: $background 60%;
+}
+
+OverwriteConfirmScreen > Container, UploadPromptScreen > Container {
+    width: auto;
+    max-width: 50;
+    height: auto;
+    background: $surface;
+    border: solid $primary;
+    padding: 1;
+}
+
+OverwriteConfirmScreen > Container {
+    border: solid $warning;
+}
+
+.title {
+    text-style: bold;
+    text-align: center;
+    width: 100%;
+}
+
+OverwriteConfirmScreen .title { color: $warning; }
+UploadPromptScreen .title { color: $primary; }
+
+.message {
+    text-align: center;
+    margin: 1 0;
+    color: $text;
+}
+
+.buttons {
+    height: auto;
+    align: center middle;
+}
+
+.buttons Button {
+    margin: 0 1;
+}
+
+/* ============================================
+   Header/Footer - Minimal
+   ============================================ */
+Header {
+    dock: top;
+    height: 1;
+}
+
+Footer {
+    dock: bottom;
+    height: 1;
+}
+
+/* ============================================
+   Focus states
+   ============================================ */
+Input:focus {
+    border: tall $primary;
+}
+
+Button:focus {
+    text-style: bold reverse;
+}
+
+/* ============================================
+   Scrollbar styling
+   ============================================ */
+VerticalScroll {
+    scrollbar-size: 1 1;
+}
+
+/* ============================================
+   Toast Notifications
+   ============================================ */
+Toast {
+    width: auto;
+    max-width: 50;
+    margin: 1;
+    padding: 1;
+}
+
+Toast.-information {
+    border-left: outer $primary;
+}
+
+Toast.-warning {
+    border-left: outer $warning;
+}
+
+Toast.-error {
+    border-left: outer $error;
+}
+
+.toast--title {
+    text-style: bold;
+}

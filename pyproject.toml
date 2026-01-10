@@ -1,0 +1,32 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "dl-video"
+version = "0.1.0"
+description = "A TUI application for downloading videos using yt-dlp"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "textual>=0.47.0",
+    "httpx>=0.27.0",
+    "pyperclip>=1.8.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "hypothesis>=6.100.0",
+    "pytest>=8.0.0",
+    "pytest-asyncio>=0.23.0",
+]
+
+[project.scripts]
+dl-video = "dl_video.__main__:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/dl_video"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"

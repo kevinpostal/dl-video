@@ -1,0 +1,149 @@
+#!/bin/bash
+set -euo pipefail
+
+# Colors for output
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+NC='\033[0m' # No Color
+
+# Config
+TEMP_DIR="$HOME/Downloads/yt_tmp"
+HARDFILES_URL="https://hardfiles.org/"
+
+usage() {
+    echo -e "${BLUE}Usage:${NC} dl-video [OPTIONS] [URL]"
+    echo ""
+    echo "Options:"
+    echo "  -n, --name NAME    Custom filename (without extension)"
+    echo "  -u, --upload       Auto-upload to hardfiles.org"
+    echo "  -k, --keep-original Skip ffmpeg conversion"
+    echo "  -h, --help         Show this help"
+    echo ""
+    echo "Examples:"
+    echo "  dl-video https://youtube.com/watch?v=xxx"
+    echo "  dl-video -n my_video -u https://youtube.com/watch?v=xxx"
+    exit 0
+}
+
+log_info()  { echo -e "${BLUE}[INFO]${NC} $1"; }
+log_ok()    { echo -e "${GREEN}[OK]${NC} $1"; }
+log_warn()  { echo -e "${YELLOW}[WARN]${NC} $1"; }
+log_error() { echo -e "${RED}[ERROR]${NC} $1"; }
+
+cleanup() {
+    [[ -f "$TEMP_DIR/input_file."* ]] && rm -f "$TEMP_DIR/input_file."* 2>/dev/null
+}
+trap cleanup EXIT
+
+# Parse arguments
+VIDEO_URL=""
+CUSTOM_NAME=""
+AUTO_UPLOAD=false
+SKIP_CONVERT=false
+
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        -n|--name) CUSTOM_NAME="$2"; shift 2 ;;
+        -u|--upload) AUTO_UPLOAD=true; shift ;;
+        -k|--keep-original) SKIP_CONVERT=true; shift ;;
+        -h|--help) usage ;;
+        -*) log_error "Unknown option: $1"; usage ;;
+        *) VIDEO_URL="$1"; shift ;;
+    esac
+done
+
+# Interactive mode if no URL provided
+if [[ -z "$VIDEO_URL" ]]; then
+    echo -e "${BLUE}Enter the video URL:${NC}"
+    read -r VIDEO_URL
+    [[ -z "$VIDEO_URL" ]] && { log_error "No URL provided"; exit 1; }
+fi
+
+if [[ -z "$CUSTOM_NAME" ]]; then
+    echo -e "${BLUE}Enter custom filename (leave blank for video title):${NC}"
+    read -r CUSTOM_NAME
+fi
+
+# Setup
+mkdir -p "$TEMP_DIR"
+cd "$TEMP_DIR" || exit 1
+
+# Get title
+if [[ -n "$CUSTOM_NAME" ]]; then
+    RAW_TITLE="$CUSTOM_NAME"
+else
+    log_info "Fetching metadata..."
+    RAW_TITLE=$(yt-dlp --get-filename -o "%(title)s" "$VIDEO_URL" 2>/dev/null) || {
+        log_error "Failed to fetch video metadata"
+        exit 1
+    }
+fi
+
+# Slugify
+SLUG_NAME=$(echo "$RAW_TITLE" | tr '[:upper:]' '[:lower:]' | sed -E 's/[^a-z0-9]+/_/g' | sed -E 's/^_|_$//g')
+[[ -z "$SLUG_NAME" ]] && SLUG_NAME="video_$(date +%s)"
+OUTPUT_FILE="${SLUG_NAME}.mp4"
+
+# Check if file exists
+if [[ -f "$OUTPUT_FILE" ]]; then
+    log_warn "File already exists: $OUTPUT_FILE"
+    echo -e "${YELLOW}Overwrite? (y/n):${NC}"
+    read -r OVERWRITE
+    [[ ! "$OVERWRITE" =~ ^[Yy]$ ]] && { log_info "Aborted"; exit 0; }
+fi
+
+# Download
+log_info "Downloading video..."
+if ! yt-dlp -f "bestvideo+bestaudio/best" --merge-output-format mp4 -o "input_file.%(ext)s" "$VIDEO_URL"; then
+    log_error "Download failed"
+    exit 1
+fi
+
+INPUT_FILE=$(ls input_file.* 2>/dev/null | head -n 1)
+[[ ! -f "$INPUT_FILE" ]] && { log_error "Downloaded file not found"; exit 1; }
+
+# Convert or rename
+if [[ "$SKIP_CONVERT" == true ]]; then
+    log_info "Skipping conversion..."
+    mv "$INPUT_FILE" "$OUTPUT_FILE"
+else
+    log_info "Converting to: $OUTPUT_FILE"
+    if ! ffmpeg -y -i "$INPUT_FILE" \
+        -c:v libx264 -profile:v high -level 4.1 \
+        -pix_fmt yuv420p \
+        -movflags +faststart \
+        -c:a aac -b:a 128k \
+        "$OUTPUT_FILE" 2>/dev/null; then
+        log_error "Conversion failed"
+        exit 1
+    fi
+    rm -f "$INPUT_FILE"
+fi
+
+FILE_SIZE=$(du -h "$OUTPUT_FILE" | cut -f1)
+log_ok "Saved: $TEMP_DIR/$OUTPUT_FILE ($FILE_SIZE)"
+
+# Upload
+if [[ "$AUTO_UPLOAD" == true ]]; then
+    UPLOAD_CHOICE="y"
+else
+    echo -e "${BLUE}Upload to hardfiles.org? (y/n):${NC}"
+    read -r UPLOAD_CHOICE
+fi
+
+if [[ "$UPLOAD_CHOICE" =~ ^[Yy]$ ]]; then
+    log_info "Uploading to hardfiles.org..."
+    UPLOAD_RESPONSE=$(curl -s -F "file=@$OUTPUT_FILE" "$HARDFILES_URL")
+    if [[ -n "$UPLOAD_RESPONSE" ]]; then
+        log_ok "Uploaded!"
+        echo -e "${GREEN}URL:${NC} $UPLOAD_RESPONSE"
+        # Copy to clipboard on macOS
+        echo -n "$UPLOAD_RESPONSE" | pbcopy 2>/dev/null && log_info "URL copied to clipboard"
+    else
+        log_error "Upload failed"
+    fi
+fi
+
+open "$TEMP_DIR"
