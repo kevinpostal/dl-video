@@ -161,6 +161,10 @@ class LogHistoryPanel(Container):
         """Message sent when browse folder button is clicked."""
         pass
 
+    class ClearHistoryRequested(Message):
+        """Message sent when clear history button is clicked."""
+        pass
+
     def __init__(self, config: Config | None = None) -> None:
         """Initialize the panel."""
         super().__init__()
@@ -184,8 +188,6 @@ class LogHistoryPanel(Container):
                     classes="history-header-row",
                 )
                 yield VerticalScroll(id="history-list")
-            with TabPane("Verbose", id="verbose-tab"):
-                yield VerticalScroll(id="verbose-scroll")
             with TabPane("Settings", id="settings-tab"):
                 yield Container(
                     Horizontal(
@@ -217,6 +219,10 @@ class LogHistoryPanel(Container):
                         Input(value=str(self._config.download_dir), id="download-dir"),
                         Button("📁", id="browse-dir-btn"),
                         classes="setting-row dir-row",
+                    ),
+                    Horizontal(
+                        Button("Clear History", id="clear-history-btn", variant="error"),
+                        classes="setting-row actions-row",
                     ),
                     id="settings-container",
                 )
@@ -260,7 +266,7 @@ class LogHistoryPanel(Container):
         log_scroll.remove_children()
 
     def log_verbose(self, message: str) -> None:
-        """Add a line to the verbose output."""
+        """Add a verbose line to the log."""
         import re
         # Strip ANSI escape codes
         ansi_escape = re.compile(r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])')
@@ -269,7 +275,7 @@ class LogHistoryPanel(Container):
         if not message.strip():
             return
         
-        verbose_scroll = self.query_one("#verbose-scroll", VerticalScroll)
+        log_scroll = self.query_one("#log-scroll", VerticalScroll)
         
         # Escape Rich markup characters to prevent parsing errors
         safe_message = message.replace("[", r"\[").replace("]", r"\]")
@@ -285,22 +291,14 @@ class LogHistoryPanel(Container):
             styled = f"[magenta]{safe_message}[/magenta]"
         elif message.startswith("[info]"):
             styled = f"[blue]{safe_message}[/blue]"
+        elif message.startswith("[upload]"):
+            styled = f"[yellow]{safe_message}[/yellow]"
         else:
-            styled = safe_message
+            styled = f"[dim]{safe_message}[/dim]"
         
-        line = Static(styled, markup=True, classes="verbose-line")
-        verbose_scroll.mount(line)
+        line = Static(styled, markup=True, classes="log-line verbose-line")
+        log_scroll.mount(line)
         line.scroll_visible()
-
-    def clear_verbose(self) -> None:
-        """Clear verbose output."""
-        verbose_scroll = self.query_one("#verbose-scroll", VerticalScroll)
-        verbose_scroll.remove_children()
-
-    def switch_to_verbose(self) -> None:
-        """Switch to the verbose tab."""
-        tabs = self.query_one("#log-history-tabs", TabbedContent)
-        tabs.active = "verbose-tab"
 
     def on_click(self, event) -> None:
         """Handle click on log URL."""
@@ -406,6 +404,8 @@ class LogHistoryPanel(Container):
         """Handle button presses."""
         if event.button.id == "browse-dir-btn":
             self.post_message(self.BrowseFolderRequested())
+        elif event.button.id == "clear-history-btn":
+            self.post_message(self.ClearHistoryRequested())
 
     def set_config(self, config: Config) -> None:
         """Set the configuration."""

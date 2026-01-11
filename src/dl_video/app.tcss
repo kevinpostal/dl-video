@@ -308,7 +308,7 @@ LogHistoryPanel Tab:hover {
 
 LogHistoryPanel #log-scroll {
     height: 1fr;
-    padding: 0 1;
+    padding: 0 1 1 1;
     background: $surface-darken-1;
     scrollbar-size: 1 1;
 }
@@ -505,22 +505,6 @@ Toast.-error {
 
 
 /* ============================================
-   Verbose Tab (in LogHistoryPanel)
-   ============================================ */
-LogHistoryPanel #verbose-scroll {
-    height: 1fr;
-    padding: 0 1;
-    background: $surface-darken-2;
-    scrollbar-size: 1 1;
-}
-
-LogHistoryPanel .verbose-line {
-    height: auto;
-    width: 100%;
-    color: $text;
-}
-
-/* ============================================
    Settings Tab (in LogHistoryPanel)
    ============================================ */
 LogHistoryPanel #settings-container {
@@ -583,6 +567,14 @@ LogHistoryPanel #browse-dir-btn {
     min-width: 4;
     height: 3;
     margin-left: 1;
+}
+
+LogHistoryPanel .actions-row {
+    margin-top: 1;
+}
+
+LogHistoryPanel #clear-history-btn {
+    width: auto;
 }
 
 /* ============================================

@@ -1,5 +1,6 @@
 """Main Textual application for dl-video."""
 
+import asyncio
 from collections.abc import Iterable
 from pathlib import Path
 
@@ -94,6 +95,76 @@ class QuitConfirmScreen(ModalScreen[bool]):
 
     def on_key(self, event) -> None:
         """Handle arrow keys for navigation."""
+        if event.key in ("left", "right"):
+            self.focus_next() if event.key == "right" else self.focus_previous()
+            event.stop()
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        if event.button.id == "confirm-btn":
+            self.dismiss(True)
+        else:
+            self.dismiss(False)
+
+    def action_cancel(self) -> None:
+        self.dismiss(False)
+
+    def action_confirm(self) -> None:
+        self.dismiss(True)
+
+
+class ClearHistoryConfirmScreen(ModalScreen[bool]):
+    """Modal screen for confirming history clear."""
+
+    DEFAULT_CSS = """
+    ClearHistoryConfirmScreen {
+        align: center middle;
+    }
+    
+    ClearHistoryConfirmScreen > Container {
+        width: 50;
+        height: auto;
+        border: thick $warning;
+        background: $surface;
+        padding: 1 2;
+    }
+    
+    ClearHistoryConfirmScreen .title {
+        text-style: bold;
+        color: $warning;
+        text-align: center;
+    }
+    
+    ClearHistoryConfirmScreen .message {
+        text-align: center;
+        color: $text-muted;
+        margin: 1 0;
+    }
+    
+    ClearHistoryConfirmScreen .buttons {
+        height: 3;
+        align: center middle;
+    }
+    
+    ClearHistoryConfirmScreen Button {
+        margin: 0 1;
+    }
+    """
+
+    BINDINGS = [
+        Binding("escape", "cancel", "Cancel"),
+        Binding("enter", "confirm", "Clear"),
+        Binding("n", "cancel", "Cancel"),
+    ]
+
+    def compose(self) -> ComposeResult:
+        with Container():
+            yield Label("Clear History?", classes="title")
+            yield Label("This will permanently delete all history.\nThis action cannot be undone.", classes="message")
+            with Horizontal(classes="buttons"):
+                yield Button("Clear", id="confirm-btn", variant="warning")
+                yield Button("Cancel", id="cancel-btn", variant="default")
+
+    def on_key(self, event) -> None:
         if event.key in ("left", "right"):
             self.focus_next() if event.key == "right" else self.focus_previous()
             event.stop()
@@ -988,6 +1059,15 @@ class DLVideoApp(App):
         self.copy_to_clipboard(event.url)
         self.notify("URL copied to clipboard!", severity="information")
 
+    def on_log_history_panel_clear_history_requested(self, event: LogHistoryPanel.ClearHistoryRequested) -> None:
+        """Handle clear history button click - show confirmation."""
+        self.push_screen(ClearHistoryConfirmScreen(), self._on_clear_history_confirmed)
+
+    def _on_clear_history_confirmed(self, confirmed: bool) -> None:
+        """Handle clear history confirmation result."""
+        if confirmed:
+            self.action_clear_history()
+
     def on_log_history_panel_info_requested(self, event: LogHistoryPanel.InfoRequested) -> None:
         """Handle info icon click - show video details modal."""
         # Prevent duplicate pushes
@@ -1089,11 +1169,10 @@ class DLVideoApp(App):
             job.progress = 0
             self._update_job_ui(job)
             
-            # Show and reset speed chart, clear verbose output
+            # Show and reset speed chart
             speed_chart = self.query_one("#speed-chart", SpeedChart)
             speed_chart.reset()
             speed_chart.display = True
-            log_panel.clear_verbose()
             
             last_progress = 0.0
             last_time = None
@@ -1121,7 +1200,10 @@ class DLVideoApp(App):
                     last_progress = progress
             
             def verbose_output(line: str) -> None:
-                log_panel.log_verbose(line)
+                # Schedule UI update on next tick
+                async def _log():
+                    log_panel.log_verbose(line)
+                asyncio.create_task(_log())
             
             downloaded_path = await downloader.download(
                 job.url, output_path, download_progress, verbose_output
@@ -1177,7 +1259,7 @@ class DLVideoApp(App):
                     job.progress = progress
                     self._update_job_ui(job)
                 
-                upload_url = await uploader.upload(output_path, upload_progress)
+                upload_url = await uploader.upload(output_path, upload_progress, log_panel.log_verbose)
                 log_panel.log_success(f"Uploaded: {upload_url}", url=upload_url)
                 self.copy_to_clipboard(upload_url)
                 self._last_upload_url = upload_url
