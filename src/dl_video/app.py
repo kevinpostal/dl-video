@@ -371,7 +371,7 @@ class VideoDetailScreen(ModalScreen[None]):
         height: 18;
         width: 100%;
         margin-bottom: 1;
-        align: center middle;
+        content-align: center middle;
     }
     
     VideoDetailScreen .thumbnail-loading {
