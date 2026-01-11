@@ -597,8 +597,15 @@ class VideoDetailScreen(ModalScreen[None]):
                 return
             
             placeholder.remove()
+            
+            # Wrap image in a horizontal container for centering
+            from textual.containers import Horizontal
             img_widget = ImageWidget(image)
-            container.mount(img_widget)
+            # Create a wrapper that centers the image
+            wrapper = Horizontal(img_widget, classes="thumbnail-wrapper")
+            wrapper.styles.width = "100%"
+            wrapper.styles.align = ("center", "middle")
+            container.mount(wrapper)
         except Exception as e:
             # On any error, show fallback with error info
             self._show_thumbnail_fallback(str(e))
