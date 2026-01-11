@@ -5,7 +5,59 @@ from textual.containers import Container, Horizontal
 from textual.message import Message
 from textual.widgets import Button, Input, Label, Static
 
+from textual_autocomplete import AutoComplete, Dropdown, DropdownItem
+
 from dl_video.utils.validator import URLValidator
+
+
+# Common video site prefixes for autocomplete
+URL_PREFIXES = [
+    DropdownItem("https://www.youtube.com/watch?v="),
+    DropdownItem("https://youtu.be/"),
+    DropdownItem("https://twitter.com/"),
+    DropdownItem("https://x.com/"),
+    DropdownItem("https://vimeo.com/"),
+    DropdownItem("https://www.twitch.tv/"),
+    DropdownItem("https://www.tiktok.com/"),
+    DropdownItem("https://www.instagram.com/"),
+    DropdownItem("https://www.reddit.com/"),
+    DropdownItem("https://streamable.com/"),
+]
+
+
+class URLAutoComplete(AutoComplete):
+    """AutoComplete for video URLs with common prefixes."""
+
+    def __init__(self, input_widget: Input, history: list[str] | None = None) -> None:
+        self._history = history or []
+        super().__init__(input_widget, Dropdown(items=self._get_items))
+
+    def _get_items(self, value: str) -> list[DropdownItem]:
+        """Get autocomplete items based on current input."""
+        if not value:
+            return []
+        
+        items = []
+        value_lower = value.lower()
+        
+        # Add matching history items first
+        for url in self._history:
+            if value_lower in url.lower():
+                items.append(DropdownItem(url))
+        
+        # Add matching prefixes
+        for prefix in URL_PREFIXES:
+            if value_lower in prefix.main.lower() and prefix.main not in [i.main for i in items]:
+                items.append(prefix)
+        
+        return items[:8]  # Limit to 8 suggestions
+
+    def add_to_history(self, url: str) -> None:
+        """Add a URL to the history for future autocomplete."""
+        if url and url not in self._history:
+            self._history.insert(0, url)
+            # Keep only last 50 URLs
+            self._history = self._history[:50]
 
 
 class InputForm(Container):
@@ -19,16 +71,19 @@ class InputForm(Container):
             self.filename = filename
             super().__init__()
 
-    def __init__(self, initial_url: str | None = None) -> None:
+    def __init__(self, initial_url: str | None = None, url_history: list[str] | None = None) -> None:
         """Initialize the input form.
 
         Args:
             initial_url: Optional URL to pre-fill.
+            url_history: Optional list of previously used URLs for autocomplete.
         """
         super().__init__()
         self._initial_url = initial_url
+        self._url_history = url_history or []
         self._validator = URLValidator()
         self._filename_visible = False
+        self._autocomplete: URLAutoComplete | None = None
 
     def compose(self) -> ComposeResult:
         """Compose the input form layout."""
@@ -51,8 +106,14 @@ class InputForm(Container):
             )
 
     def on_mount(self) -> None:
-        """Focus URL input on mount."""
-        self.query_one("#url-input", Input).focus()
+        """Focus URL input on mount and set up autocomplete."""
+        url_input = self.query_one("#url-input", Input)
+        url_input.focus()
+        
+        # Set up autocomplete
+        self._autocomplete = URLAutoComplete(url_input, self._url_history)
+        self.mount(self._autocomplete)
+        
         # Validate initial URL if provided
         if self._initial_url:
             self._validate_url(self._initial_url)
@@ -165,6 +226,10 @@ class InputForm(Container):
         filename = filename_input.value.strip() or None
 
         self.post_message(self.DownloadRequested(url, filename))
+        
+        # Add to autocomplete history
+        if self._autocomplete:
+            self._autocomplete.add_to_history(url)
 
     def set_enabled(self, enabled: bool) -> None:
         """Enable or disable the form."""

@@ -502,3 +502,100 @@ Toast.-error {
 .toast--title {
     text-style: bold;
 }
+
+
+/* ============================================
+   Speed Chart - Download visualization
+   ============================================ */
+SpeedChart {
+    height: 10;
+    width: 100%;
+    background: $surface-darken-1;
+    border-bottom: solid $secondary;
+}
+
+SpeedChart PlotextPlot {
+    height: 100%;
+    width: 100%;
+}
+
+SpeedChart .no-plotext {
+    color: $text-muted;
+    text-align: center;
+    content-align: center middle;
+    height: 100%;
+}
+
+/* ============================================
+   Settings Panel - Browse button
+   ============================================ */
+SettingsPanel .dir-row {
+    height: 3;
+    width: 100%;
+}
+
+SettingsPanel .dir-row Input {
+    width: 1fr;
+}
+
+SettingsPanel #browse-dir-btn {
+    width: 4;
+    min-width: 4;
+    height: 3;
+    margin-left: 1;
+}
+
+/* ============================================
+   Terminal Panel - Verbose output
+   ============================================ */
+TerminalPanel {
+    height: 15;
+    width: 100%;
+    background: $surface-darken-2;
+    border: solid $secondary;
+}
+
+TerminalPanel Terminal {
+    height: 100%;
+    width: 100%;
+}
+
+TerminalPanel .no-terminal {
+    color: $text-muted;
+    text-align: center;
+    content-align: center middle;
+    height: 100%;
+}
+
+TerminalPanel .terminal-title {
+    dock: top;
+    height: 1;
+    background: $secondary;
+    color: $text;
+    padding: 0 1;
+}
+
+/* ============================================
+   Autocomplete dropdown
+   ============================================ */
+AutoComplete {
+    layer: autocomplete;
+}
+
+Dropdown {
+    background: $surface;
+    border: solid $primary;
+    max-height: 10;
+}
+
+DropdownItem {
+    padding: 0 1;
+}
+
+DropdownItem:hover {
+    background: $primary;
+}
+
+DropdownItem.-selected {
+    background: $accent;
+}

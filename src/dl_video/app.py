@@ -11,7 +11,7 @@ from textual.screen import ModalScreen, Screen
 from textual.widgets import Button, Footer, Header, Input, Label, Select, Static, Switch
 from textual.worker import Worker, WorkerState
 
-from dl_video.components import InputForm, JobsPanel, LogHistoryPanel, SettingsPanel
+from dl_video.components import InputForm, JobsPanel, LogHistoryPanel, SettingsPanel, SpeedChart
 from dl_video.components.log_history_panel import HistoryEntry
 from dl_video.models import Config, Job, OperationResult, OperationState, VideoMetadata
 from dl_video.services.converter import ConversionError, VideoConverter
@@ -21,6 +21,19 @@ from dl_video.utils.config import ConfigManager
 from dl_video.utils.file_ops import open_file_in_folder, open_folder
 from dl_video.utils.history import HistoryManager, HistoryRecord, MetadataRecord
 from dl_video.utils.slugifier import Slugifier
+
+# Optional imports for enhanced features
+try:
+    from textual_fspicker import SelectDirectory
+    HAS_FSPICKER = True
+except ImportError:
+    HAS_FSPICKER = False
+
+try:
+    from textual_slidecontainer import SlideContainer
+    HAS_SLIDECONTAINER = True
+except ImportError:
+    HAS_SLIDECONTAINER = False
 
 
 class OverwriteConfirmScreen(ModalScreen[bool]):
@@ -629,6 +642,7 @@ class DLVideoApp(App):
         with Vertical(id="main-container"):
             yield InputForm(initial_url=self.initial_url)
             yield JobsPanel()
+            yield SpeedChart(id="speed-chart")
             yield LogHistoryPanel()
         yield Footer()
 
@@ -636,6 +650,9 @@ class DLVideoApp(App):
         log_panel = self.query_one(LogHistoryPanel)
         log_panel.log_info("Welcome to dl-video!")
         log_panel.log_info("Enter a video URL and press Enter. You can queue multiple downloads.")
+        
+        # Hide speed chart initially
+        self.query_one("#speed-chart").display = False
         
         # Load history into UI
         for record in self._history_manager.get_all():
@@ -779,6 +796,29 @@ class DLVideoApp(App):
         self._config = event.config
         self._save_config()
 
+    def on_settings_panel_browse_folder_requested(self, event: SettingsPanel.BrowseFolderRequested) -> None:
+        """Handle browse folder button click - open file picker."""
+        if HAS_FSPICKER:
+            self.push_screen(
+                SelectDirectory(self._config.download_dir),
+                self._on_directory_selected,
+            )
+        else:
+            self.notify("File picker not available. Install textual-fspicker.", severity="warning")
+
+    def _on_directory_selected(self, path: Path | None) -> None:
+        """Handle directory selection from file picker."""
+        if path:
+            self._config.download_dir = path
+            self._save_config()
+            # Update any visible settings panel
+            try:
+                settings = self.query_one(SettingsPanel)
+                settings.set_download_dir(path)
+            except Exception:
+                pass
+            self.notify(f"Download folder: {path}", severity="information")
+
     def on_log_history_panel_entry_selected(self, event: LogHistoryPanel.EntrySelected) -> None:
         log_panel = self.query_one(LogHistoryPanel)
         entry = event.entry
@@ -895,13 +935,42 @@ class DLVideoApp(App):
             job.progress = 0
             self._update_job_ui(job)
             
+            # Show and reset speed chart
+            speed_chart = self.query_one("#speed-chart", SpeedChart)
+            speed_chart.reset()
+            speed_chart.display = True
+            
+            last_progress = 0.0
+            last_time = None
+            import time
+            
             def download_progress(progress: float) -> None:
+                nonlocal last_progress, last_time
                 job.progress = progress
                 self._update_job_ui(job)
+                
+                # Calculate speed and update chart
+                current_time = time.time()
+                if last_time is not None and progress > last_progress:
+                    elapsed = current_time - last_time
+                    if elapsed > 0.5:  # Update every 0.5 seconds
+                        # Estimate speed based on progress (rough approximation)
+                        progress_delta = progress - last_progress
+                        # Assume ~100MB file for visualization
+                        speed_mbps = (progress_delta / 100) * 100 / elapsed
+                        speed_chart.add_speed(speed_mbps)
+                        last_progress = progress
+                        last_time = current_time
+                else:
+                    last_time = current_time
+                    last_progress = progress
             
             downloaded_path = await downloader.download(job.url, output_path, download_progress)
             temp_files.append(downloaded_path)
             log_panel.log_success(f"Downloaded: {downloaded_path.name}")
+            
+            # Hide speed chart after download
+            speed_chart.display = False
             
             # Phase 3: Convert (if enabled)
             if job.include_conversion and downloaded_path.suffix.lower() != ".mp4":

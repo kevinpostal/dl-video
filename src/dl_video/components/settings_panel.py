@@ -5,7 +5,7 @@ from pathlib import Path
 from textual.app import ComposeResult
 from textual.containers import Container, Horizontal
 from textual.message import Message
-from textual.widgets import Collapsible, Input, Label, Select, Switch
+from textual.widgets import Button, Collapsible, Input, Label, Select, Switch
 
 from dl_video.models import Config
 
@@ -29,6 +29,10 @@ class SettingsPanel(Container):
         def __init__(self, config: Config) -> None:
             self.config = config
             super().__init__()
+
+    class BrowseFolderRequested(Message):
+        """Message sent when browse folder button is clicked."""
+        pass
 
     def __init__(self, config: Config | None = None) -> None:
         """Initialize the settings panel.
@@ -57,10 +61,12 @@ class SettingsPanel(Container):
                     allow_blank=False,
                 )
             yield Label("Download folder:", classes="dir-label")
-            yield Input(
-                value=str(self._config.download_dir),
-                id="download-dir",
-            )
+            with Horizontal(classes="dir-row"):
+                yield Input(
+                    value=str(self._config.download_dir),
+                    id="download-dir",
+                )
+                yield Button("📁", id="browse-dir-btn", variant="default")
 
     def on_switch_changed(self, event: Switch.Changed) -> None:
         """Handle switch changes."""
@@ -69,6 +75,11 @@ class SettingsPanel(Container):
         elif event.switch.id == "skip-conversion":
             self._config.skip_conversion = event.value
         self._notify_change()
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        """Handle button presses."""
+        if event.button.id == "browse-dir-btn":
+            self.post_message(self.BrowseFolderRequested())
 
     def on_select_changed(self, event: Select.Changed) -> None:
         """Handle select changes."""
@@ -110,3 +121,13 @@ class SettingsPanel(Container):
         self.query_one("#skip-conversion", Switch).value = config.skip_conversion
         self.query_one("#cookies-browser", Select).value = config.cookies_browser or ""
         self.query_one("#download-dir", Input).value = str(config.download_dir)
+
+    def set_download_dir(self, path: Path) -> None:
+        """Set the download directory from external source (e.g., file picker).
+        
+        Args:
+            path: The selected directory path.
+        """
+        self._config.download_dir = path
+        self.query_one("#download-dir", Input).value = str(path)
+        self._notify_change()
