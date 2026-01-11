@@ -152,6 +152,8 @@ class LogHistoryPanel(Container):
                     classes="history-header-row",
                 )
                 yield VerticalScroll(id="history-list")
+            with TabPane("Verbose", id="verbose-tab"):
+                yield VerticalScroll(id="verbose-scroll")
             with TabPane("Settings", id="settings-tab"):
                 yield Container(
                     Horizontal(
@@ -220,6 +222,34 @@ class LogHistoryPanel(Container):
         """Clear all log messages."""
         log_scroll = self.query_one("#log-scroll", VerticalScroll)
         log_scroll.remove_children()
+
+    def log_verbose(self, message: str) -> None:
+        """Add a line to the verbose output."""
+        verbose_scroll = self.query_one("#verbose-scroll", VerticalScroll)
+        # Color-code based on content
+        if message.startswith("[debug]"):
+            styled = f"[dim]{message}[/dim]"
+        elif message.startswith("ERROR"):
+            styled = f"[red]{message}[/red]"
+        elif message.startswith("[download]"):
+            styled = f"[cyan]{message}[/cyan]"
+        elif message.startswith("[info]"):
+            styled = f"[blue]{message}[/blue]"
+        else:
+            styled = message
+        line = Static(styled, markup=True, classes="verbose-line")
+        verbose_scroll.mount(line)
+        line.scroll_visible()
+
+    def clear_verbose(self) -> None:
+        """Clear verbose output."""
+        verbose_scroll = self.query_one("#verbose-scroll", VerticalScroll)
+        verbose_scroll.remove_children()
+
+    def switch_to_verbose(self) -> None:
+        """Switch to the verbose tab."""
+        tabs = self.query_one("#log-history-tabs", TabbedContent)
+        tabs.active = "verbose-tab"
 
     def on_click(self, event) -> None:
         """Handle click on log URL or history row."""

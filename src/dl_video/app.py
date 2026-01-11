@@ -935,10 +935,11 @@ class DLVideoApp(App):
             job.progress = 0
             self._update_job_ui(job)
             
-            # Show and reset speed chart
+            # Show and reset speed chart, clear verbose output
             speed_chart = self.query_one("#speed-chart", SpeedChart)
             speed_chart.reset()
             speed_chart.display = True
+            log_panel.clear_verbose()
             
             last_progress = 0.0
             last_time = None
@@ -965,7 +966,12 @@ class DLVideoApp(App):
                     last_time = current_time
                     last_progress = progress
             
-            downloaded_path = await downloader.download(job.url, output_path, download_progress)
+            def verbose_output(line: str) -> None:
+                log_panel.log_verbose(line)
+            
+            downloaded_path = await downloader.download(
+                job.url, output_path, download_progress, verbose_output
+            )
             temp_files.append(downloaded_path)
             log_panel.log_success(f"Downloaded: {downloaded_path.name}")
             

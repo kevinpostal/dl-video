@@ -505,6 +505,22 @@ Toast.-error {
 
 
 /* ============================================
+   Verbose Tab (in LogHistoryPanel)
+   ============================================ */
+LogHistoryPanel #verbose-scroll {
+    height: 1fr;
+    padding: 0 1;
+    background: $surface-darken-2;
+    scrollbar-size: 1 1;
+}
+
+LogHistoryPanel .verbose-line {
+    height: auto;
+    width: 100%;
+    color: $text;
+}
+
+/* ============================================
    Settings Tab (in LogHistoryPanel)
    ============================================ */
 LogHistoryPanel #settings-container {

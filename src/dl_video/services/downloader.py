@@ -117,6 +117,7 @@ class VideoDownloader:
         url: str,
         output_path: Path,
         progress_callback: Callable[[float], None] | None = None,
+        verbose_callback: Callable[[str], None] | None = None,
     ) -> Path:
         """Download video with progress reporting.
 
@@ -124,6 +125,7 @@ class VideoDownloader:
             url: The video URL to download.
             output_path: Path where the video should be saved.
             progress_callback: Optional callback for progress updates (0-100).
+            verbose_callback: Optional callback for raw yt-dlp output lines.
 
         Returns:
             Path to the downloaded file.
@@ -149,6 +151,10 @@ class VideoDownloader:
             output_template,
             url,
         ]
+        
+        # Add verbose flag if callback provided
+        if verbose_callback:
+            cmd.insert(1, "--verbose")
         
         # Add cookies from browser if configured
         if self._cookies_browser:
@@ -177,6 +183,10 @@ class VideoDownloader:
                     break
 
                 line_str = line.decode().strip()
+                
+                # Send to verbose callback
+                if verbose_callback and line_str:
+                    verbose_callback(line_str)
                 
                 # Capture potential error messages
                 if line_str.startswith("ERROR:"):
