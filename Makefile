@@ -1,4 +1,4 @@
-.PHONY: help run serve funnel funnel-stop test clean install dev
+.PHONY: help run serve funnel funnel-stop test clean install dev container-pull container-check container-test run-container
 
 .DEFAULT_GOAL := help
 
@@ -6,6 +6,9 @@ TAILSCALE := /Applications/Tailscale.app/Contents/MacOS/Tailscale
 
 # Source uv env if available (for systems where uv is in ~/.local/bin)
 UV := . $$HOME/.local/bin/env 2>/dev/null || true; uv
+
+# Default container image
+CONTAINER_IMAGE := linuxserver/ffmpeg:latest
 
 # Show help
 help:
@@ -15,6 +18,7 @@ help:
 	@echo ""
 	@echo "Targets:"
 	@echo "  run              Run the app in terminal"
+	@echo "  run-container    Run the app with container backend"
 	@echo "  serve            Serve via web browser (http://0.0.0.0:8000)"
 	@echo "  funnel           Start server with Tailscale Funnel (public URL)"
 	@echo "  funnel-stop      Stop Tailscale Funnel"
@@ -24,6 +28,13 @@ help:
 	@echo "  test             Run tests"
 	@echo "  test-cov         Run tests with coverage"
 	@echo ""
+	@echo "  app-build        Build containerized app (no local deps needed)"
+	@echo "  app-run          Run containerized app (downloads to ~/Downloads)"
+	@echo ""
+	@echo "  container-pull   Pull the container image (for container backend)"
+	@echo "  container-check  Check if Podman and image are available"
+	@echo "  container-test   Test container execution (yt-dlp and ffmpeg)"
+	@echo ""
 	@echo "  clean            Clean cache files"
 	@echo "  clean-thumbnails Clear thumbnail cache"
 	@echo "  fmt              Format code with ruff"
@@ -32,6 +43,10 @@ help:
 # Run the app locally in terminal
 run:
 	@$(UV) run python -m dl_video
+
+# Run the app with container backend (sets env var)
+run-container:
+	@DL_VIDEO_BACKEND=container $(UV) run python -m dl_video
 
 # Serve via web browser (local network)
 serve:
@@ -110,3 +125,49 @@ screenshot:
 demo:
 	vhs demo.tape
 	@echo "Demo GIF saved to demo.gif"
+
+# Container-related targets
+
+# Build the containerized app (entire app in container)
+app-build:
+	@echo "Building dl-video container image..."
+	@podman build -t dl-video:latest -f Containerfile .
+
+# Run the containerized app (entire app in container)
+# Mounts ~/Downloads for output, runs with TTY for TUI
+app-run:
+	@podman run -it --rm \
+		-v $(HOME)/Downloads:/downloads:z \
+		-e TERM=$(TERM) \
+		-e COLORTERM=$(COLORTERM) \
+		dl-video:latest
+
+# Run containerized app with custom download directory
+# Usage: make app-run-dir DIR=/path/to/downloads
+app-run-dir:
+	@podman run -it --rm \
+		-v $(DIR):/downloads:z \
+		-e TERM=$(TERM) \
+		-e COLORTERM=$(COLORTERM) \
+		dl-video:latest
+
+# Pull the container image
+container-pull:
+	@echo "Pulling $(CONTAINER_IMAGE) image..."
+	@podman pull $(CONTAINER_IMAGE)
+
+# Check if Podman and image are available
+container-check:
+	@echo "Checking Podman installation..."
+	@podman --version || (echo "Podman not installed. Install with: brew install podman" && exit 1)
+	@echo "Checking for $(CONTAINER_IMAGE) image..."
+	@podman image exists $(CONTAINER_IMAGE) || (echo "Image not found. Run: make container-pull" && exit 1)
+	@echo "Container environment ready!"
+
+# Test container execution
+container-test:
+	@echo "Testing ffmpeg in container..."
+	@podman run --rm $(CONTAINER_IMAGE) ffmpeg -version 2>&1 | head -1
+	@echo "Testing ffprobe in container..."
+	@podman run --rm $(CONTAINER_IMAGE) ffprobe -version 2>&1 | head -1
+	@echo "Container tests passed!"

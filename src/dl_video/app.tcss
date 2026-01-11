@@ -577,6 +577,50 @@ LogHistoryPanel #clear-history-btn {
     width: auto;
 }
 
+/* Container settings styling */
+LogHistoryPanel .container-settings {
+    height: auto;
+    padding: 0;
+    margin-top: 1;
+}
+
+LogHistoryPanel .container-settings.hidden {
+    display: none;
+}
+
+LogHistoryPanel .podman-warning {
+    color: $warning;
+    padding: 0 0 1 0;
+    height: auto;
+}
+
+LogHistoryPanel .backend-col {
+    width: auto;
+}
+
+LogHistoryPanel .backend-col Label {
+    padding-top: 1;
+    margin-right: 1;
+}
+
+LogHistoryPanel .backend-col Select {
+    width: 14;
+}
+
+LogHistoryPanel .container-image-row {
+    height: 3;
+}
+
+LogHistoryPanel .container-image-row Label {
+    padding-top: 1;
+    width: auto;
+    margin-right: 1;
+}
+
+LogHistoryPanel .container-image-row Input {
+    width: 1fr;
+}
+
 /* ============================================
    Speed Chart - Download visualization
    ============================================ */

@@ -1,6 +1,7 @@
 """Main Textual application for dl-video."""
 
 import asyncio
+import os
 from collections.abc import Iterable
 from pathlib import Path
 
@@ -14,7 +15,8 @@ from textual.worker import Worker, WorkerState
 
 from dl_video.components import InputForm, JobsPanel, LogHistoryPanel, SpeedChart
 from dl_video.components.log_history_panel import HistoryEntry
-from dl_video.models import Config, Job, OperationResult, OperationState, VideoMetadata
+from dl_video.models import BackendType, Config, Job, OperationResult, OperationState, VideoMetadata
+from dl_video.services.container_service import ContainerService
 from dl_video.services.converter import ConversionError, VideoConverter
 from dl_video.services.downloader import DownloadError, VideoDownloader
 from dl_video.services.uploader import FileUploader, UploadError
@@ -805,10 +807,43 @@ class DLVideoApp(App):
         self._last_output_path: Path | None = None
         self._last_upload_url: str | None = None
         
+        # Initialize ContainerService with config settings
+        self._container_service = self._create_container_service()
+        
         # Track jobs and their workers
         self._jobs: dict[str, Job] = {}
         self._job_workers: dict[str, Worker] = {}
         self._job_services: dict[str, dict] = {}  # Services per job for cancellation
+
+    def _create_container_service(self) -> ContainerService:
+        """Create ContainerService with config settings and environment override.
+        
+        The DL_VIDEO_BACKEND environment variable can override the config setting.
+        Valid values: "local", "container"
+        
+        Returns:
+            Configured ContainerService instance
+        """
+        # Check for environment variable override
+        env_backend = os.environ.get("DL_VIDEO_BACKEND")
+        
+        if env_backend:
+            # Environment variable takes precedence
+            if env_backend.lower() == "container":
+                backend_type = BackendType.CONTAINER
+            else:
+                backend_type = BackendType.LOCAL
+        else:
+            # Use config setting
+            if self._config.execution_backend == "container":
+                backend_type = BackendType.CONTAINER
+            else:
+                backend_type = BackendType.LOCAL
+        
+        return ContainerService(
+            backend_type=backend_type,
+            container_image=self._config.container_image,
+        )
 
     def compose(self) -> ComposeResult:
         yield Header()
@@ -1015,8 +1050,84 @@ class DLVideoApp(App):
         log_panel.log_warning(f"Job cancelled")
 
     def on_log_history_panel_config_changed(self, event: LogHistoryPanel.ConfigChanged) -> None:
+        old_backend = self._config.execution_backend
+        old_image = self._config.container_image
+        
         self._config = event.config
         self._save_config()
+        
+        # Check if backend or image settings changed
+        new_backend = self._config.execution_backend
+        new_image = self._config.container_image
+        
+        if old_backend != new_backend or old_image != new_image:
+            # Update ContainerService with new settings
+            self._update_container_service()
+            
+            # If switching to container backend, trigger image pull
+            if new_backend == "container" and old_backend != "container":
+                self._trigger_container_image_pull()
+
+    def _update_container_service(self) -> None:
+        """Update ContainerService with current config settings.
+        
+        Called when backend or container image settings change.
+        """
+        # Determine backend type (environment variable still takes precedence)
+        env_backend = os.environ.get("DL_VIDEO_BACKEND")
+        
+        if env_backend:
+            if env_backend.lower() == "container":
+                backend_type = BackendType.CONTAINER
+            else:
+                backend_type = BackendType.LOCAL
+        else:
+            if self._config.execution_backend == "container":
+                backend_type = BackendType.CONTAINER
+            else:
+                backend_type = BackendType.LOCAL
+        
+        # Update the container service
+        self._container_service.set_backend(backend_type)
+        self._container_service.set_container_image(self._config.container_image)
+
+    def _trigger_container_image_pull(self) -> None:
+        """Trigger container image pull when switching to container backend.
+        
+        This runs in the background and logs progress to the log panel.
+        """
+        self.run_worker(
+            self._pull_container_image(),
+            name="container_image_pull",
+            exclusive=False,
+        )
+
+    async def _pull_container_image(self) -> None:
+        """Pull the container image in the background."""
+        log_panel = self.query_one(LogHistoryPanel)
+        
+        # First check if Podman is available
+        is_available, error_msg = await self._container_service.is_backend_available()
+        if not is_available:
+            log_panel.log_warning(f"Container backend not available: {error_msg}")
+            return
+        
+        image_name = self._config.container_image or "linuxserver/ffmpeg:latest"
+        log_panel.log_info(f"Pulling container image: {image_name}...")
+        
+        def progress_callback(line: str) -> None:
+            # Log progress updates
+            if line.strip():
+                log_panel.log_verbose(f"[pull] {line}")
+        
+        success, error = await self._container_service.ensure_container_image(
+            progress_callback=progress_callback
+        )
+        
+        if success:
+            log_panel.log_success(f"Container image ready: {image_name}")
+        else:
+            log_panel.log_error(f"Failed to pull container image: {error}")
 
     def on_log_history_panel_browse_folder_requested(self, event: LogHistoryPanel.BrowseFolderRequested) -> None:
         """Handle browse folder button click - open file picker."""
@@ -1088,10 +1199,15 @@ class DLVideoApp(App):
         )
         self._jobs[job.id] = job
         
-        # Create services for this job
+        # Create services for this job with ContainerService
         self._job_services[job.id] = {
-            'downloader': VideoDownloader(cookies_browser=self._config.cookies_browser),
-            'converter': VideoConverter(),
+            'downloader': VideoDownloader(
+                cookies_browser=self._config.cookies_browser,
+                container_service=self._container_service,
+            ),
+            'converter': VideoConverter(
+                container_service=self._container_service,
+            ),
             'uploader': FileUploader(),
         }
         

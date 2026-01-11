@@ -28,6 +28,9 @@ class ConfigManager:
                 auto_upload=data.get("auto_upload", False),
                 skip_conversion=data.get("skip_conversion", False),
                 cookies_browser=data.get("cookies_browser"),
+                # New container settings with migration support for old configs
+                execution_backend=data.get("execution_backend", "local"),
+                container_image=data.get("container_image"),
             )
         except (json.JSONDecodeError, KeyError):
             return Config.default()
@@ -41,6 +44,8 @@ class ConfigManager:
             "auto_upload": config.auto_upload,
             "skip_conversion": config.skip_conversion,
             "cookies_browser": config.cookies_browser,
+            "execution_backend": config.execution_backend,
+            "container_image": config.container_image,
         }
 
         with open(self.config_path, "w") as f:

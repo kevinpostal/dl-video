@@ -17,46 +17,66 @@ A terminal UI application for downloading, converting, and sharing videos. Built
 - 🖼️ Video thumbnail previews
 - ⚙️ Configurable settings (cookies, download folder, etc.)
 - 🌐 Web access via Tailscale Funnel
+- 🐳 Container support - run without installing dependencies
+
+## Quick Start
+
+### Option 1: Container (Recommended)
+
+No Python or dependencies needed - just Podman (or Docker):
+
+```bash
+# Build the container
+make app-build
+
+# Run (downloads to ~/Downloads)
+make app-run
+```
+
+### Option 2: Local Installation
+
+```bash
+# Install dependencies
+make install
+
+# Run
+make run
+```
 
 ## Requirements
 
+**For container mode:**
+- [Podman](https://podman.io/) or Docker
+
+**For local installation:**
 - Python 3.11+
 - [yt-dlp](https://github.com/yt-dlp/yt-dlp)
-- [ffmpeg](https://ffmpeg.org/) (for conversion)
+- [ffmpeg](https://ffmpeg.org/)
 - [uv](https://github.com/astral-sh/uv) (recommended) or pip
-
-## Installation
-
-```bash
-# Clone the repository
-git clone https://github.com/kevinpostal/dl-video.git
-cd dl-video
-
-# Install dependencies
-make install
-# or: uv sync
-```
 
 ## Usage
 
 ```bash
-# Run in terminal
+# Terminal mode
 make run
 
-# Or directly
-uv run python -m dl_video
-```
-
-### Web Access
-
-Serve the app in a web browser:
-
-```bash
-# Local network only
+# Web browser mode (local network)
 make serve
 
 # Public access via Tailscale Funnel
 make funnel
+```
+
+### Container Backend
+
+Run the app locally but execute downloads in containers (useful if you don't want to install yt-dlp/ffmpeg):
+
+```bash
+# Pull the ffmpeg container image
+make container-pull
+
+# Run with container backend
+make run-container
 ```
 
 ## Commands
@@ -64,22 +84,22 @@ make funnel
 | Command | Description |
 |---------|-------------|
 | `make run` | Run the app in terminal |
-| `make serve` | Serve via web browser (http://0.0.0.0:8000) |
-| `make funnel` | Start with Tailscale Funnel (public URL) |
-| `make funnel-stop` | Stop Tailscale Funnel |
+| `make app-build` | Build containerized app |
+| `make app-run` | Run containerized app (downloads to ~/Downloads) |
+| `make run-container` | Run locally with container backend |
+| `make serve` | Serve via web browser |
+| `make funnel` | Public access via Tailscale Funnel |
 | `make test` | Run tests |
-| `make clean` | Clean cache files |
 | `make install` | Install dependencies |
-| `make dev` | Install with dev dependencies |
 
 ## Keyboard Shortcuts
 
 | Key | Action |
 |-----|--------|
 | `Enter` | Start download |
-| `Esc` | Quit (with confirmation) |
+| `Ctrl+Q` | Quit |
 | `Ctrl+P` | Open command palette |
-| `i` | Show video info (in history) |
+| `Ctrl+O` | Open download folder |
 
 ## Configuration
 
@@ -93,17 +113,10 @@ Settings are stored in `~/.config/dl-video/config.json`:
 ## Development
 
 ```bash
-# Install dev dependencies
-make dev
-
-# Run tests
-make test
-
-# Format code
-make fmt
-
-# Lint
-make lint
+make dev      # Install dev dependencies
+make test     # Run tests
+make fmt      # Format code
+make lint     # Lint code
 ```
 
 ## License

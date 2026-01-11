@@ -5,7 +5,7 @@ from datetime import datetime
 from pathlib import Path
 
 from textual.app import ComposeResult
-from textual.containers import Container, Horizontal, VerticalScroll
+from textual.containers import Container, Horizontal, Vertical, VerticalScroll
 from textual.message import Message
 from textual.widgets import Button, Input, Label, Select, Static, Switch, TabbedContent, TabPane
 
@@ -20,6 +20,12 @@ BROWSER_OPTIONS = [
     ("Safari", "safari"),
     ("Edge", "edge"),
     ("Brave", "brave"),
+]
+
+# Backend options for execution
+BACKEND_OPTIONS = [
+    ("Local", "local"),
+    ("Container", "container"),
 ]
 
 
@@ -221,6 +227,33 @@ class LogHistoryPanel(Container):
                         classes="setting-row dir-row",
                     ),
                     Horizontal(
+                        Horizontal(
+                            Label("Backend:"),
+                            Select(
+                                BACKEND_OPTIONS,
+                                value=self._config.execution_backend or "local",
+                                id="execution-backend",
+                                allow_blank=False,
+                            ),
+                            classes="setting-col backend-col",
+                        ),
+                        classes="setting-row",
+                    ),
+                    Vertical(
+                        Static("⚠ Podman is not installed", id="podman-warning", classes="podman-warning"),
+                        Horizontal(
+                            Label("Container image:"),
+                            Input(
+                                value=self._config.container_image or "",
+                                placeholder="linuxserver/ffmpeg:latest",
+                                id="container-image",
+                            ),
+                            classes="setting-row container-image-row",
+                        ),
+                        id="container-settings",
+                        classes="container-settings",
+                    ),
+                    Horizontal(
                         Button("Clear History", id="clear-history-btn", variant="error"),
                         classes="setting-row actions-row",
                     ),
@@ -228,9 +261,45 @@ class LogHistoryPanel(Container):
                 )
 
     def on_mount(self) -> None:
-        """Hide header initially."""
+        """Hide header initially and set up container settings visibility."""
         self.query_one("#history-header-row").display = False
         self.query_one("#history-list").display = False
+        # Set initial visibility of container settings based on backend selection
+        self._update_container_settings_visibility()
+        # Check Podman availability if container backend is selected
+        if self._config.execution_backend == "container":
+            self._check_podman_availability()
+
+    def _update_container_settings_visibility(self) -> None:
+        """Show/hide container-specific settings based on backend selection."""
+        try:
+            container_settings = self.query_one("#container-settings")
+            is_container = self._config.execution_backend == "container"
+            container_settings.display = is_container
+        except Exception:
+            pass  # Widget not yet mounted
+
+    def _check_podman_availability(self) -> None:
+        """Check if Podman is available and update warning visibility."""
+        import asyncio
+        asyncio.create_task(self._async_check_podman())
+
+    async def _async_check_podman(self) -> None:
+        """Async check for Podman availability."""
+        from dl_video.services.backends import PodmanBackend
+        
+        backend = PodmanBackend()
+        is_available, error_msg = await backend.is_available()
+        
+        try:
+            warning = self.query_one("#podman-warning", Static)
+            if is_available:
+                warning.display = False
+            else:
+                warning.update(f"⚠ {error_msg}")
+                warning.display = True
+        except Exception:
+            pass  # Widget not available
 
     def _add_log_line(self, content: str, url: str | None = None, css_class: str = "") -> None:
         """Add a line to the log."""
@@ -390,6 +459,14 @@ class LogHistoryPanel(Container):
             value = event.value if event.value else None
             self._config.cookies_browser = value
             self.post_message(self.ConfigChanged(self._config))
+        elif event.select.id == "execution-backend":
+            value = event.value if event.value else "local"
+            self._config.execution_backend = value
+            self._update_container_settings_visibility()
+            # Check Podman availability when container backend is selected
+            if value == "container":
+                self._check_podman_availability()
+            self.post_message(self.ConfigChanged(self._config))
 
     def on_input_changed(self, event: Input.Changed) -> None:
         """Handle input changes in settings."""
@@ -399,6 +476,11 @@ class LogHistoryPanel(Container):
                 self.post_message(self.ConfigChanged(self._config))
             except Exception:
                 pass
+        elif event.input.id == "container-image":
+            # Store empty string as None
+            value = event.value.strip() if event.value else None
+            self._config.container_image = value if value else None
+            self.post_message(self.ConfigChanged(self._config))
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         """Handle button presses."""
@@ -415,6 +497,12 @@ class LogHistoryPanel(Container):
             self.query_one("#skip-conversion", Switch).value = config.skip_conversion
             self.query_one("#cookies-browser", Select).value = config.cookies_browser or ""
             self.query_one("#download-dir", Input).value = str(config.download_dir)
+            self.query_one("#execution-backend", Select).value = config.execution_backend or "local"
+            self.query_one("#container-image", Input).value = config.container_image or ""
+            self._update_container_settings_visibility()
+            # Check Podman availability if container backend is selected
+            if config.execution_backend == "container":
+                self._check_podman_availability()
         except Exception:
             pass
 

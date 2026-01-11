@@ -19,6 +19,23 @@ class OperationState(Enum):
     ERROR = "error"
 
 
+class BackendType(Enum):
+    """Execution backend type for running commands."""
+
+    LOCAL = "local"
+    CONTAINER = "container"
+
+
+@dataclass
+class CommandResult:
+    """Result of a command execution."""
+
+    return_code: int
+    stdout: str
+    stderr: str
+    duration_seconds: float | None = None
+
+
 @dataclass
 class Job:
     """Represents a single download/convert/upload job."""
@@ -146,6 +163,9 @@ class Config:
     auto_upload: bool
     skip_conversion: bool
     cookies_browser: str | None  # Browser to extract cookies from (chrome, firefox, safari, edge, brave)
+    # Container settings
+    execution_backend: str = "local"  # "local" or "container"
+    container_image: str | None = None  # Custom image, defaults to linuxserver/ffmpeg
 
     @classmethod
     def default(cls) -> "Config":
@@ -155,6 +175,8 @@ class Config:
             auto_upload=False,
             skip_conversion=False,
             cookies_browser=None,
+            execution_backend="local",
+            container_image=None,
         )
 
 
