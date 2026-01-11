@@ -84,3 +84,13 @@ fmt:
 # Lint code
 lint:
 	uv run ruff check src tests
+
+# Take a screenshot of the app (saves as SVG)
+screenshot:
+	uv run textual run --screenshot 3 dl_video.app:DLVideoApp
+	@echo "Screenshot saved!"
+
+# Record a demo GIF (requires vhs: brew install vhs)
+demo:
+	vhs demo.tape
+	@echo "Demo GIF saved to demo.gif"
