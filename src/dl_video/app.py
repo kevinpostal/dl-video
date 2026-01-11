@@ -371,7 +371,6 @@ class VideoDetailScreen(ModalScreen[None]):
         height: 18;
         width: 100%;
         margin-bottom: 1;
-        content-align: center middle;
     }
     
     VideoDetailScreen .thumbnail-loading {
@@ -563,7 +562,6 @@ class VideoDetailScreen(ModalScreen[None]):
             
             placeholder.remove()
             img_widget = ImageWidget(image)
-            img_widget.styles.margin = (0, 0, 0, 4)  # Add left margin to center-ish
             container.mount(img_widget)
         except Exception as e:
             # On any error, show fallback with error info
