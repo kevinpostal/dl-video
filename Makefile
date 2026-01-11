@@ -53,8 +53,8 @@ funnel-stop:
 
 # Install dependencies (installs uv if missing)
 install:
-	@command -v uv >/dev/null 2>&1 || { echo "Installing uv..."; curl -LsSf https://astral.sh/uv/install.sh | sh; }
-	uv sync
+	@command -v uv >/dev/null 2>&1 || { echo "Installing uv..."; curl -LsSf https://astral.sh/uv/install.sh | sh; . $$HOME/.local/bin/env; }
+	@. $$HOME/.local/bin/env 2>/dev/null || true; uv sync
 
 # Install with dev dependencies
 dev:
