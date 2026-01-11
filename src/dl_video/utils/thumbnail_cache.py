@@ -104,8 +104,8 @@ class ThumbnailCache:
             image = image.convert('RGB')
         
         # Scale up small images to minimum width for better display
-        # Target 640px width which fits well in the modal
-        min_width = 640
+        # Target 800px width which fills more of the modal
+        min_width = 800
         if image.width < min_width:
             scale = min_width / image.width
             new_width = min_width
