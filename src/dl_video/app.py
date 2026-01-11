@@ -524,9 +524,12 @@ class VideoDetailScreen(ModalScreen[None]):
         return url
 
     async def _load_thumbnail(self) -> None:
-        """Fetch and display thumbnail image."""
-        import httpx
+        """Fetch and display thumbnail image, using cache when available."""
         from io import BytesIO
+        
+        from PIL import Image as PILImage
+        
+        from dl_video.utils.thumbnail_cache import ThumbnailCache
         
         try:
             # Try TGP (Kitty protocol) first for Ghostty/Kitty, fall back to auto
@@ -543,28 +546,39 @@ class VideoDetailScreen(ModalScreen[None]):
         if not meta or not meta.thumbnail_url:
             return
         
+        cache = ThumbnailCache()
+        
         try:
-            # Try to get highest quality thumbnail
+            # Try to get highest quality thumbnail URL
             thumbnail_url = self._get_best_thumbnail_url(meta.thumbnail_url)
             
-            async with httpx.AsyncClient(follow_redirects=True) as client:
-                response = await client.get(thumbnail_url, timeout=10.0)
+            # Check cache first
+            image = cache.get(thumbnail_url)
+            if image is None and thumbnail_url != meta.thumbnail_url:
+                # Try original URL in cache
+                image = cache.get(meta.thumbnail_url)
+            
+            if image is None:
+                # Not cached, fetch from network
+                import httpx
                 
-                # If maxres fails, fall back to original URL
-                if response.status_code == 404 and thumbnail_url != meta.thumbnail_url:
-                    response = await client.get(meta.thumbnail_url, timeout=10.0)
-                
-                response.raise_for_status()
-                
-                from PIL import Image as PILImage
-                image = PILImage.open(BytesIO(response.content))
+                async with httpx.AsyncClient(follow_redirects=True) as client:
+                    response = await client.get(thumbnail_url, timeout=10.0)
+                    
+                    # If maxres fails, fall back to original URL
+                    if response.status_code == 404 and thumbnail_url != meta.thumbnail_url:
+                        thumbnail_url = meta.thumbnail_url
+                        response = await client.get(thumbnail_url, timeout=10.0)
+                    
+                    response.raise_for_status()
+                    image = PILImage.open(BytesIO(response.content))
                 
                 # Convert to RGB if needed (some images are RGBA or palette)
                 if image.mode not in ('RGB', 'L'):
                     image = image.convert('RGB')
                 
                 # Scale small images up to fill container better
-                # Target minimum width of 1280px for consistent display (like HD thumbnails)
+                # Target minimum width of 1280px for consistent display
                 min_width = 1280
                 if image.width < min_width:
                     scale = min_width / image.width
@@ -572,13 +586,16 @@ class VideoDetailScreen(ModalScreen[None]):
                     new_height = int(image.height * scale)
                     image = image.resize((new_width, new_height), PILImage.Resampling.LANCZOS)
                 
-                # Replace placeholder with actual image
-                container = self.query_one("#thumbnail-container", Container)
-                placeholder = self.query_one("#thumbnail-placeholder", Static)
-                placeholder.remove()
-                
-                img_widget = ImageWidget(image)
-                container.mount(img_widget)
+                # Save to cache (already processed)
+                cache.save(thumbnail_url, image)
+            
+            # Replace placeholder with actual image
+            container = self.query_one("#thumbnail-container", Container)
+            placeholder = self.query_one("#thumbnail-placeholder", Static)
+            placeholder.remove()
+            
+            img_widget = ImageWidget(image)
+            container.mount(img_widget)
         except Exception as e:
             # On any error, show fallback with error info
             self._show_thumbnail_fallback(str(e))
