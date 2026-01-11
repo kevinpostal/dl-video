@@ -63,6 +63,7 @@ class VideoConverter:
         input_path: Path,
         output_path: Path,
         progress_callback: Callable[[float], None] | None = None,
+        verbose_callback: Callable[[str], None] | None = None,
     ) -> Path:
         """Convert video to MP4 with progress reporting.
 
@@ -70,6 +71,7 @@ class VideoConverter:
             input_path: Path to the input video file.
             output_path: Path where the converted video should be saved.
             progress_callback: Optional callback for progress updates (0-100).
+            verbose_callback: Optional callback for ffmpeg output lines.
 
         Returns:
             Path to the converted file.
@@ -87,8 +89,14 @@ class VideoConverter:
 
         # Get duration for progress calculation
         duration = await self._get_duration(input_path)
+        
+        if verbose_callback:
+            verbose_callback(f"[ffmpeg] Converting: {input_path.name}")
+            verbose_callback(f"[ffmpeg] Output: {output_path.name}")
+            verbose_callback(f"[ffmpeg] Duration: {duration:.1f}s")
 
-        # Build ffmpeg command
+        # Build ffmpeg command - use info loglevel if verbose
+        loglevel = "info" if verbose_callback else "error"
         cmd = [
             "ffmpeg",
             "-i",
@@ -98,7 +106,7 @@ class VideoConverter:
             "pipe:1",  # Output progress to stdout
             "-nostats",  # Don't show encoding stats
             "-loglevel",
-            "error",  # Only show errors
+            loglevel,
             "-c:v",
             "libx264",  # Video codec
             "-preset",
@@ -111,6 +119,9 @@ class VideoConverter:
             "128k",  # Audio bitrate
             str(output_path),
         ]
+        
+        if verbose_callback:
+            verbose_callback(f"[ffmpeg] Command: ffmpeg -i {input_path.name} -c:v libx264 -crf 23 -c:a aac {output_path.name}")
 
         try:
             self._process = await asyncio.create_subprocess_exec(
@@ -121,6 +132,8 @@ class VideoConverter:
 
             # Parse progress from stdout
             current_time = 0.0
+            last_reported_progress = -1
+            
             while True:
                 if self._cancelled:
                     self._process.terminate()
@@ -144,6 +157,11 @@ class VideoConverter:
                     if duration > 0 and progress_callback:
                         progress = min((current_time / duration) * 100, 100.0)
                         progress_callback(progress)
+                        # Log progress every 10%
+                        progress_int = int(progress // 10) * 10
+                        if verbose_callback and progress_int > last_reported_progress:
+                            verbose_callback(f"[ffmpeg] Progress: {progress_int}% ({current_time:.1f}s / {duration:.1f}s)")
+                            last_reported_progress = progress_int
 
                 # Also check for out_time format
                 time_str_match = re.search(
@@ -163,6 +181,8 @@ class VideoConverter:
             if self._process.returncode != 0:
                 stderr = await self._process.stderr.read()
                 error_msg = stderr.decode().strip() or "Unknown error"
+                if verbose_callback:
+                    verbose_callback(f"[ffmpeg] ERROR: {error_msg}")
                 # Clean up partial output
                 if output_path.exists():
                     output_path.unlink()
@@ -173,6 +193,9 @@ class VideoConverter:
 
             if progress_callback:
                 progress_callback(100.0)
+            
+            if verbose_callback:
+                verbose_callback(f"[ffmpeg] Conversion complete: {output_path.name}")
 
             return output_path
 

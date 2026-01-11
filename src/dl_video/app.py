@@ -990,7 +990,9 @@ class DLVideoApp(App):
                     job.progress = progress
                     self._update_job_ui(job)
                 
-                converted_path = await converter.convert(downloaded_path, converted_path, convert_progress)
+                converted_path = await converter.convert(
+                    downloaded_path, converted_path, convert_progress, verbose_output
+                )
                 temp_files.append(converted_path)
                 log_panel.log_success(f"Converted: {converted_path.name}")
                 

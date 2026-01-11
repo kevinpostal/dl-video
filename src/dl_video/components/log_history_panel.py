@@ -241,10 +241,12 @@ class LogHistoryPanel(Container):
         # Color-code based on content (check original message)
         if message.startswith("[debug]"):
             styled = f"[dim]{safe_message}[/dim]"
-        elif message.startswith("ERROR"):
+        elif message.startswith("ERROR") or "[ffmpeg] ERROR" in message:
             styled = f"[red]{safe_message}[/red]"
         elif message.startswith("[download]"):
             styled = f"[cyan]{safe_message}[/cyan]"
+        elif message.startswith("[ffmpeg]"):
+            styled = f"[magenta]{safe_message}[/magenta]"
         elif message.startswith("[info]"):
             styled = f"[blue]{safe_message}[/blue]"
         else:
