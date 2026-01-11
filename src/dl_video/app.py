@@ -36,6 +36,81 @@ except ImportError:
     HAS_SLIDECONTAINER = False
 
 
+class QuitConfirmScreen(ModalScreen[bool]):
+    """Modal screen for confirming app exit."""
+
+    DEFAULT_CSS = """
+    QuitConfirmScreen {
+        align: center middle;
+    }
+    
+    QuitConfirmScreen > Container {
+        width: 40;
+        height: auto;
+        border: thick $error;
+        background: $surface;
+        padding: 1 2;
+    }
+    
+    QuitConfirmScreen .title {
+        text-style: bold;
+        color: $error;
+        text-align: center;
+    }
+    
+    QuitConfirmScreen .message {
+        text-align: center;
+        color: $text-muted;
+        margin: 1 0;
+    }
+    
+    QuitConfirmScreen .buttons {
+        height: 3;
+        align: center middle;
+    }
+    
+    QuitConfirmScreen Button {
+        margin: 0 1;
+    }
+    
+    QuitConfirmScreen #confirm-btn:focus {
+        text-style: bold;
+    }
+    """
+
+    BINDINGS = [
+        Binding("escape", "confirm", "Quit"),
+        Binding("enter", "confirm", "Quit"),
+        Binding("n", "cancel", "Cancel"),
+    ]
+
+    def compose(self) -> ComposeResult:
+        with Container():
+            yield Label("Quit dl-video?", classes="title")
+            yield Label("Esc = quit, N = cancel", classes="message")
+            with Horizontal(classes="buttons"):
+                yield Button("Quit", id="confirm-btn", variant="error")
+                yield Button("Cancel", id="cancel-btn", variant="default")
+
+    def on_key(self, event) -> None:
+        """Handle arrow keys for navigation."""
+        if event.key in ("left", "right"):
+            self.focus_next() if event.key == "right" else self.focus_previous()
+            event.stop()
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        if event.button.id == "confirm-btn":
+            self.dismiss(True)
+        else:
+            self.dismiss(False)
+
+    def action_cancel(self) -> None:
+        self.dismiss(False)
+
+    def action_confirm(self) -> None:
+        self.dismiss(True)
+
+
 class OverwriteConfirmScreen(ModalScreen[bool]):
     """Modal screen for confirming file overwrite."""
 
@@ -315,7 +390,7 @@ class VideoDetailScreen(ModalScreen[None]):
     }
     
     VideoDetailScreen > Container {
-        width: 90;
+        width: 80;
         height: auto;
         max-height: 85%;
         border: thick $accent;
@@ -368,15 +443,15 @@ class VideoDetailScreen(ModalScreen[None]):
     }
     
     VideoDetailScreen .thumbnail-container {
-        height: 18;
+        height: 12;
         width: 100%;
-        margin-bottom: 1;
+        padding-bottom: 1;
     }
     
     VideoDetailScreen .thumbnail-loading {
         color: $text-muted;
         text-align: center;
-        height: 16;
+        height: 100%;
         content-align: center middle;
     }
 
@@ -547,15 +622,14 @@ class VideoDetailScreen(ModalScreen[None]):
         from dl_video.utils.thumbnail_cache import ThumbnailCache, get_best_thumbnail_url
         
         try:
-            # Try TGP (Kitty protocol) first for Ghostty/Kitty, fall back to auto
+            # Use TGPImage for best quality on Ghostty/Kitty terminals
+            from textual_image.widget import TGPImage as ImageWidget
+        except ImportError:
             try:
-                from textual_image.widget import TGPImage as ImageWidget
-            except ImportError:
                 from textual_image.widget import Image as ImageWidget
-        except ImportError as e:
-            # textual-image not available, show URL instead
-            self._show_thumbnail_fallback(f"Import error: {e}")
-            return
+            except ImportError as e:
+                self._show_thumbnail_fallback(f"Import error: {e}")
+                return
         
         meta = self._entry.metadata
         if not meta or not meta.thumbnail_url:
@@ -598,19 +672,9 @@ class VideoDetailScreen(ModalScreen[None]):
             
             placeholder.remove()
             
-            # Calculate left padding to center the image
-            # Container is ~86 chars wide (90 - padding), each char ~8-10 pixels
-            # Image is 800px wide, which is ~80-100 chars
-            # For smaller images, add left margin
-            container_chars = 86
-            # Estimate image width in terminal chars (roughly 8 pixels per char)
-            image_chars = image.width // 8
-            left_padding = max(0, (container_chars - image_chars) // 2)
-            
+            # Mount image - TGP renders at cursor position, can't be CSS centered
             img_widget = ImageWidget(image)
-            if left_padding > 0:
-                img_widget.styles.margin = (0, 0, 0, left_padding)
-            container.mount(img_widget)
+            await container.mount(img_widget)
         except Exception as e:
             # On any error, show fallback with error info
             self._show_thumbnail_fallback(str(e))
@@ -651,7 +715,7 @@ class DLVideoApp(App):
 
     BINDINGS = [
         Binding("ctrl+q", "quit", "Quit", show=True),
-        Binding("escape", "cancel_all", "Cancel All", show=True),
+        Binding("escape", "maybe_quit", "Quit", show=False),
         Binding("ctrl+o", "open_folder", "Open Folder", show=True),
         Binding("ctrl+c", "copy_last_url", "Copy URL", show=True),
         Binding("ctrl+p", "command_palette", "Commands", show=True),
@@ -776,6 +840,15 @@ class DLVideoApp(App):
         self._cancel_all_jobs()
         self._save_config()
         self.exit()
+
+    def action_maybe_quit(self) -> None:
+        """Show quit confirmation dialog."""
+        self.push_screen(QuitConfirmScreen(), self._handle_quit_response)
+
+    def _handle_quit_response(self, should_quit: bool) -> None:
+        """Handle the quit confirmation response."""
+        if should_quit:
+            self.action_quit()
 
     def action_cancel_all(self) -> None:
         """Cancel all running jobs."""

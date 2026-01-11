@@ -88,7 +88,7 @@ class ThumbnailCache:
     def process_and_save(self, url: str, data: bytes) -> Image.Image:
         """Process image data and save to cache.
         
-        Converts to RGB and scales small images up.
+        Converts to RGB and scales images to fit modal width.
         
         Args:
             url: Thumbnail URL (for cache key)
@@ -103,12 +103,13 @@ class ThumbnailCache:
         if image.mode not in ('RGB', 'L'):
             image = image.convert('RGB')
         
-        # Scale up small images to minimum width for better display
-        # Target 800px width which fills more of the modal
-        min_width = 800
-        if image.width < min_width:
-            scale = min_width / image.width
-            new_width = min_width
+        # Target width for display - fits well in 80-char modal
+        target_width = 800
+        
+        # Scale to target width (up or down)
+        if image.width != target_width:
+            scale = target_width / image.width
+            new_width = target_width
             new_height = int(image.height * scale)
             image = image.resize((new_width, new_height), Image.Resampling.LANCZOS)
         
