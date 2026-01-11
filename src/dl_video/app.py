@@ -315,9 +315,9 @@ class VideoDetailScreen(ModalScreen[None]):
     }
     
     VideoDetailScreen > Container {
-        width: 70;
+        width: 90;
         height: auto;
-        max-height: 80%;
+        max-height: 85%;
         border: thick $accent;
         background: $surface;
         padding: 1 2;
@@ -368,9 +368,10 @@ class VideoDetailScreen(ModalScreen[None]):
     }
     
     VideoDetailScreen .thumbnail-container {
-        height: 16;
+        height: 20;
         width: 100%;
         margin-bottom: 1;
+        overflow: hidden;
     }
     
     VideoDetailScreen .thumbnail-loading {
