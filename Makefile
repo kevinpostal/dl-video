@@ -4,6 +4,9 @@
 
 TAILSCALE := /Applications/Tailscale.app/Contents/MacOS/Tailscale
 
+# Source uv env if available (for systems where uv is in ~/.local/bin)
+UV := . $$HOME/.local/bin/env 2>/dev/null || true; uv
+
 # Show help
 help:
 	@echo "dl-video - Video downloader TUI"
@@ -28,12 +31,12 @@ help:
 
 # Run the app locally in terminal
 run:
-	uv run python -m dl_video
+	@$(UV) run python -m dl_video
 
 # Serve via web browser (local network)
 serve:
 	@lsof -ti:8000 | xargs kill -9 2>/dev/null || true
-	uv run python serve.py
+	@$(UV) run python serve.py
 
 # Start Tailscale Funnel and serve
 funnel:
@@ -43,7 +46,7 @@ funnel:
 	@echo ""
 	@echo "Funnel started! Starting server..."
 	@echo ""
-	uv run python serve.py
+	@$(UV) run python serve.py
 
 # Stop Tailscale Funnel
 funnel-stop:
@@ -63,15 +66,15 @@ install:
 
 # Install with dev dependencies
 dev:
-	uv sync --all-extras
+	@$(UV) sync --all-extras
 
 # Run tests
 test:
-	uv run pytest
+	@$(UV) run pytest
 
 # Run tests with coverage
 test-cov:
-	uv run pytest --cov=dl_video
+	@$(UV) run pytest --cov=dl_video
 
 # Clean up cache files
 clean:
@@ -85,15 +88,15 @@ clean-thumbnails:
 
 # Format code
 fmt:
-	uv run ruff format src tests
+	@$(UV) run ruff format src tests
 
 # Lint code
 lint:
-	uv run ruff check src tests
+	@$(UV) run ruff check src tests
 
 # Take a screenshot of the app (saves as SVG)
 screenshot:
-	uv run textual run --screenshot 3 dl_video.app:DLVideoApp
+	@$(UV) run textual run --screenshot 3 dl_video.app:DLVideoApp
 	@echo "Screenshot saved!"
 
 # Record a demo GIF (requires vhs: brew install vhs)
