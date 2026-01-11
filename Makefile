@@ -16,7 +16,7 @@ help:
 	@echo "  funnel           Start server with Tailscale Funnel (public URL)"
 	@echo "  funnel-stop      Stop Tailscale Funnel"
 	@echo ""
-	@echo "  install          Install dependencies"
+	@echo "  install          Install dependencies (auto-installs uv if needed)"
 	@echo "  dev              Install with dev dependencies"
 	@echo "  test             Run tests"
 	@echo "  test-cov         Run tests with coverage"
@@ -51,8 +51,9 @@ funnel-stop:
 	@lsof -ti:8000 | xargs kill -9 2>/dev/null || true
 	@echo "Funnel stopped"
 
-# Install dependencies
+# Install dependencies (installs uv if missing)
 install:
+	@command -v uv >/dev/null 2>&1 || { echo "Installing uv..."; curl -LsSf https://astral.sh/uv/install.sh | sh; }
 	uv sync
 
 # Install with dev dependencies
