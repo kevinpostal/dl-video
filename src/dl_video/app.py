@@ -857,6 +857,8 @@ class DLVideoApp(App):
             self.notify(f"Download folder: {path}", severity="information")
 
     def on_log_history_panel_entry_selected(self, event: LogHistoryPanel.EntrySelected) -> None:
+        import sys
+        print(f"DEBUG App: EntrySelected received", file=sys.stderr)
         log_panel = self.query_one(LogHistoryPanel)
         entry = event.entry
         if entry.upload_url:
@@ -876,9 +878,13 @@ class DLVideoApp(App):
 
     def on_log_history_panel_info_requested(self, event: LogHistoryPanel.InfoRequested) -> None:
         """Handle info icon click - show video details modal."""
+        import sys
+        print(f"DEBUG App: InfoRequested received, screen_stack={[type(s).__name__ for s in self.screen_stack]}", file=sys.stderr)
         # Prevent duplicate pushes
         if any(isinstance(s, VideoDetailScreen) for s in self.screen_stack):
+            print("DEBUG App: VideoDetailScreen already in stack, skipping", file=sys.stderr)
             return
+        print("DEBUG App: Pushing VideoDetailScreen", file=sys.stderr)
         self.push_screen(VideoDetailScreen(event.entry))
 
     def _start_job(self, url: str, custom_filename: str | None) -> None:
