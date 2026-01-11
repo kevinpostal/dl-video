@@ -169,7 +169,7 @@ SettingsPanel .dir-label {
     height: 1;
 }
 
-SettingsPanel #download-dir {
+SettingsPanel .dir-row #download-dir {
     margin: 0;
     height: 3;
 }
@@ -539,10 +539,11 @@ SettingsPanel .dir-row Input {
 }
 
 SettingsPanel #browse-dir-btn {
-    width: 4;
-    min-width: 4;
+    width: 5;
+    min-width: 5;
     height: 3;
     margin-left: 1;
+    border: tall $primary;
 }
 
 /* ============================================
