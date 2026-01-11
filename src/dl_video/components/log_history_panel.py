@@ -67,21 +67,42 @@ class HistoryRow(Horizontal):
             self.entry = entry
             super().__init__()
 
+    class RowClicked(Message):
+        """Message sent when the row is clicked (not info icon)."""
+
+        def __init__(self, entry: HistoryEntry) -> None:
+            self.entry = entry
+            super().__init__()
+
     def __init__(self, entry: HistoryEntry, index: int) -> None:
         super().__init__(classes="history-row")
         self._entry = entry
         self._index = index
+        self._info_clicked = False
 
     def compose(self) -> ComposeResult:
         yield Static(str(self._index), classes="history-num")
         # Show info icon if metadata available
         if self._entry.metadata:
-            yield Static("ℹ", classes="history-info")
+            yield Static("ℹ", classes="history-info", id=f"info-{self._index}")
         else:
             yield Static(" ", classes="history-info")
         yield Static(self._entry.filename, classes="history-file")
         yield Static(self._entry.source_url, classes="history-source")
         yield Static(self._format_size(self._entry.file_size), classes="history-size")
+
+    def on_click(self, event) -> None:
+        """Handle clicks on this row."""
+        # Check if clicked on info icon
+        if isinstance(event.widget, Static) and "history-info" in event.widget.classes:
+            if self._entry.metadata:
+                event.stop()
+                self.post_message(self.InfoClicked(self._entry))
+                return
+        
+        # Otherwise it's a row click
+        event.stop()
+        self.post_message(self.RowClicked(self._entry))
 
     def _format_size(self, size: int | None) -> str:
         if size is None:
@@ -267,7 +288,7 @@ class LogHistoryPanel(Container):
         tabs.active = "verbose-tab"
 
     def on_click(self, event) -> None:
-        """Handle click on log URL or history row."""
+        """Handle click on log URL."""
         widget = event.widget
         
         # Check if clicked on a log URL
@@ -276,25 +297,15 @@ class LogHistoryPanel(Container):
             if isinstance(parent, LogLine) and parent.url:
                 self.post_message(self.UrlClicked(parent.url))
                 event.stop()
-                event.prevent_default()
                 return
-        
-        # Check if clicked on info icon
-        if isinstance(widget, Static) and "history-info" in widget.classes:
-            parent = widget.parent
-            if isinstance(parent, HistoryRow) and parent._entry.metadata:
-                self.post_message(self.InfoRequested(parent._entry))
-                event.stop()
-                event.prevent_default()
-                return
-        
-        # Check for history row (copy URL on click)
-        row_widget = widget
-        while row_widget is not None:
-            if isinstance(row_widget, HistoryRow):
-                self.post_message(self.EntrySelected(row_widget._entry))
-                break
-            row_widget = row_widget.parent
+
+    def on_history_row_info_clicked(self, event: HistoryRow.InfoClicked) -> None:
+        """Handle info icon click from HistoryRow."""
+        self.post_message(self.InfoRequested(event.entry))
+
+    def on_history_row_row_clicked(self, event: HistoryRow.RowClicked) -> None:
+        """Handle row click from HistoryRow."""
+        self.post_message(self.EntrySelected(event.entry))
 
     def add_entry(
         self,
