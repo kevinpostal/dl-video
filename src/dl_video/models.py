@@ -172,7 +172,7 @@ class Config:
         """Return default configuration."""
         return cls(
             download_dir=Path.home() / "Downloads" / "yt_tmp",
-            auto_upload=False,
+            auto_upload=True,
             skip_conversion=False,
             cookies_browser=None,
             execution_backend="local",
