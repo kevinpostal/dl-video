@@ -564,8 +564,8 @@ class VideoDetailScreen(ModalScreen[None]):
                     image = image.convert('RGB')
                 
                 # Scale small images up to fill container better
-                # Target minimum width of 640px for consistent display
-                min_width = 640
+                # Target minimum width of 1280px for consistent display (like HD thumbnails)
+                min_width = 1280
                 if image.width < min_width:
                     scale = min_width / image.width
                     new_width = int(image.width * scale)
