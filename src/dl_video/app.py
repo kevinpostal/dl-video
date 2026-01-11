@@ -387,9 +387,7 @@ class VideoDetailScreen(ModalScreen[None]):
     }
     """
 
-    BINDINGS = [
-        Binding("escape", "close", "Close"),
-    ]
+    BINDINGS = []  # No escape binding - was causing issues
 
     def __init__(self, entry: HistoryEntry) -> None:
         super().__init__()
