@@ -524,6 +524,9 @@ class VideoDetailScreen(ModalScreen[None]):
     def action_close(self) -> None:
         with open("/tmp/dl-video-debug.log", "a") as f:
             f.write("VideoDetailScreen: action_close called\n")
+            import traceback
+            f.write("action_close stack:\n")
+            f.write("".join(traceback.format_stack()))
         self.dismiss(None)
 
     async def _load_thumbnail(self) -> None:
