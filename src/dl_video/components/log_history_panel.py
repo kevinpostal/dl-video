@@ -93,12 +93,13 @@ class HistoryRow(Horizontal):
 
     def on_click(self, event) -> None:
         """Handle clicks on this row."""
-        import sys
-        print(f"DEBUG HistoryRow.on_click: widget={type(event.widget).__name__}, classes={getattr(event.widget, 'classes', [])}", file=sys.stderr)
+        with open("/tmp/dl-video-debug.log", "a") as f:
+            f.write(f"HistoryRow.on_click: widget={type(event.widget).__name__}, classes={getattr(event.widget, 'classes', [])}\n")
         
         # Debounce - prevent handling multiple click events
         if self._handling_click:
-            print("DEBUG: Already handling click, ignoring", file=sys.stderr)
+            with open("/tmp/dl-video-debug.log", "a") as f:
+                f.write("Already handling click, ignoring\n")
             event.stop()
             return
         
@@ -108,12 +109,14 @@ class HistoryRow(Horizontal):
         # Check if clicked on info icon
         if isinstance(event.widget, Static) and "history-info" in event.widget.classes:
             if self._entry.metadata:
-                print("DEBUG: Posting InfoClicked", file=sys.stderr)
+                with open("/tmp/dl-video-debug.log", "a") as f:
+                    f.write("Posting InfoClicked\n")
                 event.stop()
                 self.post_message(self.InfoClicked(self._entry))
         else:
             # Row click (not info icon)
-            print("DEBUG: Posting RowClicked", file=sys.stderr)
+            with open("/tmp/dl-video-debug.log", "a") as f:
+                f.write("Posting RowClicked\n")
             event.stop()
             self.post_message(self.RowClicked(self._entry))
 
