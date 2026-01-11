@@ -1,4 +1,4 @@
-"""Combined log and history panel with tabs."""
+"""Combined log, history, and settings panel with tabs."""
 
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -7,9 +7,20 @@ from pathlib import Path
 from textual.app import ComposeResult
 from textual.containers import Container, Horizontal, VerticalScroll
 from textual.message import Message
-from textual.widgets import Static, TabbedContent, TabPane
+from textual.widgets import Button, Input, Label, Select, Static, Switch, TabbedContent, TabPane
 
 from dl_video.utils.history import MetadataRecord
+from dl_video.models import Config
+
+# Browser options for cookie extraction
+BROWSER_OPTIONS = [
+    ("None", ""),
+    ("Chrome", "chrome"),
+    ("Firefox", "firefox"),
+    ("Safari", "safari"),
+    ("Edge", "edge"),
+    ("Brave", "brave"),
+]
 
 
 @dataclass
@@ -84,7 +95,7 @@ class HistoryRow(Horizontal):
 
 
 class LogHistoryPanel(Container):
-    """Combined panel with tabs for Log and History views."""
+    """Combined panel with tabs for Log, History, and Settings views."""
 
     class InfoRequested(Message):
         """Message sent when info icon is clicked."""
@@ -107,10 +118,22 @@ class LogHistoryPanel(Container):
             self.url = url
             super().__init__()
 
-    def __init__(self) -> None:
+    class ConfigChanged(Message):
+        """Message sent when configuration changes."""
+
+        def __init__(self, config: Config) -> None:
+            self.config = config
+            super().__init__()
+
+    class BrowseFolderRequested(Message):
+        """Message sent when browse folder button is clicked."""
+        pass
+
+    def __init__(self, config: Config | None = None) -> None:
         """Initialize the panel."""
         super().__init__()
         self._entries: list[HistoryEntry] = []
+        self._config = config or Config.default()
 
     def compose(self) -> ComposeResult:
         """Compose the tabbed layout."""
@@ -129,6 +152,36 @@ class LogHistoryPanel(Container):
                     classes="history-header-row",
                 )
                 yield VerticalScroll(id="history-list")
+            with TabPane("Settings", id="settings-tab"):
+                yield Container(
+                    Horizontal(
+                        Switch(value=self._config.auto_upload, id="auto-upload"),
+                        Label("Auto-upload to upload.beer"),
+                        classes="setting-row",
+                    ),
+                    Horizontal(
+                        Switch(value=self._config.skip_conversion, id="skip-conversion"),
+                        Label("Skip ffmpeg conversion"),
+                        classes="setting-row",
+                    ),
+                    Horizontal(
+                        Label("Cookies from: "),
+                        Select(
+                            BROWSER_OPTIONS,
+                            value=self._config.cookies_browser or "",
+                            id="cookies-browser",
+                            allow_blank=False,
+                        ),
+                        classes="setting-row",
+                    ),
+                    Label("Download folder:", classes="dir-label"),
+                    Horizontal(
+                        Input(value=str(self._config.download_dir), id="download-dir"),
+                        Button("📁", id="browse-dir-btn", variant="default"),
+                        classes="dir-row",
+                    ),
+                    id="settings-container",
+                )
 
     def on_mount(self) -> None:
         """Hide header initially."""
@@ -248,3 +301,53 @@ class LogHistoryPanel(Container):
         history_list.display = False
         self.query_one("#history-header-row").display = False
         self.query_one("#history-empty").display = True
+
+    # Settings tab handlers
+    def on_switch_changed(self, event: Switch.Changed) -> None:
+        """Handle switch changes in settings."""
+        if event.switch.id == "auto-upload":
+            self._config.auto_upload = event.value
+        elif event.switch.id == "skip-conversion":
+            self._config.skip_conversion = event.value
+        self.post_message(self.ConfigChanged(self._config))
+
+    def on_select_changed(self, event: Select.Changed) -> None:
+        """Handle select changes in settings."""
+        if event.select.id == "cookies-browser":
+            value = event.value if event.value else None
+            self._config.cookies_browser = value
+            self.post_message(self.ConfigChanged(self._config))
+
+    def on_input_changed(self, event: Input.Changed) -> None:
+        """Handle input changes in settings."""
+        if event.input.id == "download-dir":
+            try:
+                self._config.download_dir = Path(event.value).expanduser()
+                self.post_message(self.ConfigChanged(self._config))
+            except Exception:
+                pass
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        """Handle button presses."""
+        if event.button.id == "browse-dir-btn":
+            self.post_message(self.BrowseFolderRequested())
+
+    def set_config(self, config: Config) -> None:
+        """Set the configuration."""
+        self._config = config
+        try:
+            self.query_one("#auto-upload", Switch).value = config.auto_upload
+            self.query_one("#skip-conversion", Switch).value = config.skip_conversion
+            self.query_one("#cookies-browser", Select).value = config.cookies_browser or ""
+            self.query_one("#download-dir", Input).value = str(config.download_dir)
+        except Exception:
+            pass
+
+    def set_download_dir(self, path: Path) -> None:
+        """Set the download directory from external source."""
+        self._config.download_dir = path
+        try:
+            self.query_one("#download-dir", Input).value = str(path)
+        except Exception:
+            pass
+        self.post_message(self.ConfigChanged(self._config))

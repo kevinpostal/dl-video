@@ -11,7 +11,7 @@ from textual.screen import ModalScreen, Screen
 from textual.widgets import Button, Footer, Header, Input, Label, Select, Static, Switch
 from textual.worker import Worker, WorkerState
 
-from dl_video.components import InputForm, JobsPanel, LogHistoryPanel, SettingsPanel, SpeedChart
+from dl_video.components import InputForm, JobsPanel, LogHistoryPanel, SpeedChart
 from dl_video.components.log_history_panel import HistoryEntry
 from dl_video.models import Config, Job, OperationResult, OperationState, VideoMetadata
 from dl_video.services.converter import ConversionError, VideoConverter
@@ -296,7 +296,7 @@ class SettingsScreen(ModalScreen[None]):
                 pass
 
     def _notify_change(self) -> None:
-        self.post_message(SettingsPanel.ConfigChanged(self._config))
+        self.post_message(LogHistoryPanel.ConfigChanged(self._config))
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         if event.button.id == "close-btn":
@@ -641,10 +641,9 @@ class DLVideoApp(App):
         yield Header()
         with Vertical(id="main-container"):
             yield InputForm(initial_url=self.initial_url)
-            yield SettingsPanel(self._config)
             yield JobsPanel()
             yield SpeedChart(id="speed-chart")
-            yield LogHistoryPanel()
+            yield LogHistoryPanel(config=self._config)
         yield Footer()
 
     def on_mount(self) -> None:
@@ -793,11 +792,11 @@ class DLVideoApp(App):
         log_panel = self.query_one(LogHistoryPanel)
         log_panel.log_warning(f"Job cancelled")
 
-    def on_settings_panel_config_changed(self, event: SettingsPanel.ConfigChanged) -> None:
+    def on_log_history_panel_config_changed(self, event: LogHistoryPanel.ConfigChanged) -> None:
         self._config = event.config
         self._save_config()
 
-    def on_settings_panel_browse_folder_requested(self, event: SettingsPanel.BrowseFolderRequested) -> None:
+    def on_log_history_panel_browse_folder_requested(self, event: LogHistoryPanel.BrowseFolderRequested) -> None:
         """Handle browse folder button click - open file picker."""
         if HAS_FSPICKER:
             self.push_screen(
@@ -814,7 +813,7 @@ class DLVideoApp(App):
             self._save_config()
             # Update any visible settings panel
             try:
-                settings = self.query_one(SettingsPanel)
+                settings = self.query_one(LogHistoryPanel)
                 settings.set_download_dir(path)
             except Exception:
                 pass

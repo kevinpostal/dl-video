@@ -505,6 +505,54 @@ Toast.-error {
 
 
 /* ============================================
+   Settings Tab (in LogHistoryPanel)
+   ============================================ */
+LogHistoryPanel #settings-container {
+    padding: 1;
+    height: auto;
+}
+
+LogHistoryPanel .setting-row {
+    height: 3;
+    margin: 0;
+}
+
+LogHistoryPanel .setting-row Switch {
+    margin-right: 1;
+}
+
+LogHistoryPanel .setting-row Label {
+    padding-top: 1;
+}
+
+LogHistoryPanel .setting-row Select {
+    width: 14;
+    margin-left: 1;
+}
+
+LogHistoryPanel .dir-label {
+    color: $text-muted;
+    height: 1;
+    margin-top: 1;
+}
+
+LogHistoryPanel .dir-row {
+    height: 3;
+    width: 100%;
+}
+
+LogHistoryPanel .dir-row Input {
+    width: 1fr;
+}
+
+LogHistoryPanel #browse-dir-btn {
+    width: 5;
+    min-width: 5;
+    height: 3;
+    margin-left: 1;
+}
+
+/* ============================================
    Speed Chart - Download visualization
    ============================================ */
 SpeedChart {
