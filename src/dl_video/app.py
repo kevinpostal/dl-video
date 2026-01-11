@@ -506,30 +506,9 @@ class VideoDetailScreen(ModalScreen[None]):
         if self._entry.metadata and self._entry.metadata.thumbnail_url:
             self.run_worker(self._load_thumbnail(), exclusive=True)
 
-    def _get_best_thumbnail_url(self, url: str) -> str:
-        """Try to get highest quality thumbnail URL.
-        
-        YouTube thumbnails come in various sizes:
-        - default.jpg (120x90)
-        - mqdefault.jpg (320x180)
-        - hqdefault.jpg (480x360)
-        - sddefault.jpg (640x480)
-        - maxresdefault.jpg (1280x720)
-        """
-        # Try to upgrade YouTube thumbnails to max resolution
-        if "ytimg.com" in url or "youtube.com" in url:
-            for quality in ["default", "mqdefault", "hqdefault", "sddefault"]:
-                if quality in url:
-                    return url.replace(quality, "maxresdefault")
-        return url
-
     async def _load_thumbnail(self) -> None:
         """Fetch and display thumbnail image, using cache when available."""
-        from io import BytesIO
-        
-        from PIL import Image as PILImage
-        
-        from dl_video.utils.thumbnail_cache import ThumbnailCache
+        from dl_video.utils.thumbnail_cache import ThumbnailCache, get_best_thumbnail_url
         
         try:
             # Try TGP (Kitty protocol) first for Ghostty/Kitty, fall back to auto
@@ -550,7 +529,7 @@ class VideoDetailScreen(ModalScreen[None]):
         
         try:
             # Try to get highest quality thumbnail URL
-            thumbnail_url = self._get_best_thumbnail_url(meta.thumbnail_url)
+            thumbnail_url = get_best_thumbnail_url(meta.thumbnail_url)
             
             # Check cache first
             image = cache.get(thumbnail_url)
@@ -571,23 +550,7 @@ class VideoDetailScreen(ModalScreen[None]):
                         response = await client.get(thumbnail_url, timeout=10.0)
                     
                     response.raise_for_status()
-                    image = PILImage.open(BytesIO(response.content))
-                
-                # Convert to RGB if needed (some images are RGBA or palette)
-                if image.mode not in ('RGB', 'L'):
-                    image = image.convert('RGB')
-                
-                # Scale small images up to fill container better
-                # Target minimum width of 1280px for consistent display
-                min_width = 1280
-                if image.width < min_width:
-                    scale = min_width / image.width
-                    new_width = int(image.width * scale)
-                    new_height = int(image.height * scale)
-                    image = image.resize((new_width, new_height), PILImage.Resampling.LANCZOS)
-                
-                # Save to cache (already processed)
-                cache.save(thumbnail_url, image)
+                    image = cache.process_and_save(thumbnail_url, response.content)
             
             # Replace placeholder with actual image
             container = self.query_one("#thumbnail-container", Container)
@@ -684,7 +647,8 @@ class DLVideoApp(App):
         # Hide speed chart initially
         self.query_one("#speed-chart").display = False
         
-        # Load history into UI
+        # Load history into UI and collect thumbnail URLs for preloading
+        thumbnail_urls = []
         for record in self._history_manager.get_all():
             log_panel.add_entry(
                 filename=record.filename,
@@ -695,6 +659,45 @@ class DLVideoApp(App):
                 metadata=record.metadata,
                 from_history=True,
             )
+            if record.metadata and record.metadata.thumbnail_url:
+                thumbnail_urls.append(record.metadata.thumbnail_url)
+        
+        # Preload thumbnails in background
+        if thumbnail_urls:
+            self.run_worker(self._preload_thumbnails(thumbnail_urls), exclusive=False)
+
+    async def _preload_thumbnails(self, urls: list[str]) -> None:
+        """Preload thumbnails into cache in background."""
+        import httpx
+        
+        from dl_video.utils.thumbnail_cache import ThumbnailCache, get_best_thumbnail_url
+        
+        cache = ThumbnailCache()
+        
+        async with httpx.AsyncClient(follow_redirects=True) as client:
+            for url in urls:
+                # Get best quality URL
+                thumbnail_url = get_best_thumbnail_url(url)
+                
+                # Skip if already cached
+                if cache.has(thumbnail_url) or cache.has(url):
+                    continue
+                
+                try:
+                    response = await client.get(thumbnail_url, timeout=10.0)
+                    
+                    # Fall back to original if maxres fails
+                    if response.status_code == 404 and thumbnail_url != url:
+                        thumbnail_url = url
+                        response = await client.get(thumbnail_url, timeout=10.0)
+                    
+                    if response.status_code != 200:
+                        continue
+                    
+                    cache.process_and_save(thumbnail_url, response.content)
+                except Exception:
+                    # Silently skip failed thumbnails
+                    pass
 
     def get_system_commands(self, screen: Screen) -> Iterable[SystemCommand]:
         yield from super().get_system_commands(screen)

@@ -1,13 +1,33 @@
 """Thumbnail caching for video metadata."""
 
 import hashlib
+from io import BytesIO
 from pathlib import Path
 
 from PIL import Image
 
 
+def get_best_thumbnail_url(url: str) -> str:
+    """Try to get highest quality thumbnail URL.
+    
+    YouTube thumbnails come in various sizes:
+    - default.jpg (120x90)
+    - mqdefault.jpg (320x180)
+    - hqdefault.jpg (480x360)
+    - sddefault.jpg (640x480)
+    - maxresdefault.jpg (1280x720)
+    """
+    if "ytimg.com" in url or "youtube.com" in url:
+        for quality in ["default", "mqdefault", "hqdefault", "sddefault"]:
+            if quality in url:
+                return url.replace(quality, "maxresdefault")
+    return url
+
+
 class ThumbnailCache:
     """Caches downloaded thumbnails locally."""
+
+    MIN_WIDTH = 1280  # Minimum width for consistent display
 
     def __init__(self, cache_dir: Path | None = None) -> None:
         """Initialize the thumbnail cache.
@@ -64,6 +84,34 @@ class ThumbnailCache:
         # Save as PNG for lossless quality
         image.save(cache_path, "PNG")
         return cache_path
+
+    def process_and_save(self, url: str, data: bytes) -> Image.Image:
+        """Process image data and save to cache.
+        
+        Converts to RGB, scales up small images, and caches.
+        
+        Args:
+            url: Thumbnail URL (for cache key)
+            data: Raw image bytes
+            
+        Returns:
+            Processed PIL Image
+        """
+        image = Image.open(BytesIO(data))
+        
+        # Convert to RGB if needed
+        if image.mode not in ('RGB', 'L'):
+            image = image.convert('RGB')
+        
+        # Scale small images up for consistent display
+        if image.width < self.MIN_WIDTH:
+            scale = self.MIN_WIDTH / image.width
+            new_width = int(image.width * scale)
+            new_height = int(image.height * scale)
+            image = image.resize((new_width, new_height), Image.Resampling.LANCZOS)
+        
+        self.save(url, image)
+        return image
 
     def clear(self) -> int:
         """Clear all cached thumbnails.
