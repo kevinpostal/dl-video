@@ -524,37 +524,54 @@ LogHistoryPanel .verbose-line {
    Settings Tab (in LogHistoryPanel)
    ============================================ */
 LogHistoryPanel #settings-container {
-    padding: 1;
+    padding: 1 2;
     height: auto;
 }
 
 LogHistoryPanel .setting-row {
     height: 3;
-    margin: 0;
+    margin-bottom: 1;
+    width: 100%;
 }
 
-LogHistoryPanel .setting-row Switch {
+LogHistoryPanel .setting-col {
+    width: 1fr;
+    height: 3;
+}
+
+LogHistoryPanel .setting-col Switch {
     margin-right: 1;
 }
 
-LogHistoryPanel .setting-row Label {
+LogHistoryPanel .setting-col Label {
     padding-top: 1;
 }
 
-LogHistoryPanel .setting-row Select {
-    width: 14;
-    margin-left: 1;
+LogHistoryPanel .setting-col Select {
+    width: 16;
 }
 
-LogHistoryPanel .dir-label {
-    color: $text-muted;
-    height: 1;
-    margin-top: 1;
-}
-
-LogHistoryPanel .dir-row {
-    height: 3;
+LogHistoryPanel .setting-col Select SelectCurrent {
     width: 100%;
+}
+
+LogHistoryPanel .setting-col Select SelectOverlay {
+    width: 16;
+}
+
+LogHistoryPanel .cookies-col {
+    width: auto;
+}
+
+LogHistoryPanel .cookies-col Label {
+    padding-top: 1;
+    margin-right: 1;
+}
+
+LogHistoryPanel .dir-row Label {
+    padding-top: 1;
+    width: auto;
+    margin-right: 1;
 }
 
 LogHistoryPanel .dir-row Input {
@@ -562,8 +579,8 @@ LogHistoryPanel .dir-row Input {
 }
 
 LogHistoryPanel #browse-dir-btn {
-    width: 5;
-    min-width: 5;
+    width: 4;
+    min-width: 4;
     height: 3;
     margin-left: 1;
 }

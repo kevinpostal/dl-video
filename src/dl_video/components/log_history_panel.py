@@ -189,30 +189,34 @@ class LogHistoryPanel(Container):
             with TabPane("Settings", id="settings-tab"):
                 yield Container(
                     Horizontal(
-                        Switch(value=self._config.auto_upload, id="auto-upload"),
-                        Label("Auto-upload to upload.beer"),
-                        classes="setting-row",
-                    ),
-                    Horizontal(
-                        Switch(value=self._config.skip_conversion, id="skip-conversion"),
-                        Label("Skip ffmpeg conversion"),
-                        classes="setting-row",
-                    ),
-                    Horizontal(
-                        Label("Cookies from: "),
-                        Select(
-                            BROWSER_OPTIONS,
-                            value=self._config.cookies_browser or "",
-                            id="cookies-browser",
-                            allow_blank=False,
+                        Horizontal(
+                            Switch(value=self._config.auto_upload, id="auto-upload"),
+                            Label("Auto-upload"),
+                            classes="setting-col",
+                        ),
+                        Horizontal(
+                            Switch(value=self._config.skip_conversion, id="skip-conversion"),
+                            Label("Skip conversion"),
+                            classes="setting-col",
+                        ),
+                        Horizontal(
+                            Label("Cookies:"),
+                            Select(
+                                BROWSER_OPTIONS,
+                                value=self._config.cookies_browser or "",
+                                id="cookies-browser",
+                                allow_blank=False,
+                                prompt="None",
+                            ),
+                            classes="setting-col cookies-col",
                         ),
                         classes="setting-row",
                     ),
-                    Label("Download folder:", classes="dir-label"),
                     Horizontal(
+                        Label("Download folder:"),
                         Input(value=str(self._config.download_dir), id="download-dir"),
-                        Button("📁", id="browse-dir-btn", variant="default"),
-                        classes="dir-row",
+                        Button("📁", id="browse-dir-btn"),
+                        classes="setting-row dir-row",
                     ),
                     id="settings-container",
                 )
