@@ -508,37 +508,36 @@ class VideoDetailScreen(ModalScreen[None]):
 
     def on_mount(self) -> None:
         """Load thumbnail when screen mounts."""
-        with open("/tmp/dl-video-debug.log", "a") as f:
-            f.write("VideoDetailScreen: on_mount called\n")
         if self._entry.metadata and self._entry.metadata.thumbnail_url:
             self.run_worker(self._load_thumbnail())
         # Set mounted flag after a short delay to avoid the spurious key event
         self.set_timer(0.2, self._set_mounted)
 
-    def on_unmount(self) -> None:
-        """Log when screen is unmounted."""
-        with open("/tmp/dl-video-debug.log", "a") as f:
-            f.write("VideoDetailScreen: on_unmount called\n")
-            import traceback
-            f.write("".join(traceback.format_stack()))
-
     def _set_mounted(self) -> None:
         """Set the mounted flag after delay."""
         self._mounted = True
 
+    def on_click(self, event) -> None:
+        """Handle clicks - close if clicking outside the modal container."""
+        # Check if click is on the modal background (VideoDetailScreen itself)
+        if event.widget is self and self._mounted:
+            self.dismiss(None)
+            return
+        
+        # Handle thumbnail URL clicks
+        widget = event.widget
+        if isinstance(widget, Static) and widget.id == "thumbnail-url":
+            import webbrowser
+            if self._entry.metadata and self._entry.metadata.thumbnail_url:
+                webbrowser.open(self._entry.metadata.thumbnail_url)
+        elif isinstance(widget, Static) and widget.id == "thumbnail-placeholder":
+            import webbrowser
+            if self._entry.metadata and self._entry.metadata.thumbnail_url:
+                webbrowser.open(self._entry.metadata.thumbnail_url)
+
     def on_button_pressed(self, event: Button.Pressed) -> None:
-        with open("/tmp/dl-video-debug.log", "a") as f:
-            f.write(f"VideoDetailScreen: Button pressed: {event.button.id}\n")
         if event.button.id == "close-btn":
             self.dismiss(None)
-
-    def action_close(self) -> None:
-        with open("/tmp/dl-video-debug.log", "a") as f:
-            f.write("VideoDetailScreen: action_close called\n")
-            import traceback
-            f.write("action_close stack:\n")
-            f.write("".join(traceback.format_stack()))
-        self.dismiss(None)
 
     async def _load_thumbnail(self) -> None:
         """Fetch and display thumbnail image, using cache when available."""
@@ -884,8 +883,6 @@ class DLVideoApp(App):
             self.notify(f"Download folder: {path}", severity="information")
 
     def on_log_history_panel_entry_selected(self, event: LogHistoryPanel.EntrySelected) -> None:
-        with open("/tmp/dl-video-debug.log", "a") as f:
-            f.write("App: EntrySelected received\n")
         log_panel = self.query_one(LogHistoryPanel)
         entry = event.entry
         if entry.upload_url:
@@ -905,15 +902,9 @@ class DLVideoApp(App):
 
     def on_log_history_panel_info_requested(self, event: LogHistoryPanel.InfoRequested) -> None:
         """Handle info icon click - show video details modal."""
-        with open("/tmp/dl-video-debug.log", "a") as f:
-            f.write(f"App: InfoRequested received, screen_stack={[type(s).__name__ for s in self.screen_stack]}\n")
         # Prevent duplicate pushes
         if any(isinstance(s, VideoDetailScreen) for s in self.screen_stack):
-            with open("/tmp/dl-video-debug.log", "a") as f:
-                f.write("App: VideoDetailScreen already in stack, skipping\n")
             return
-        with open("/tmp/dl-video-debug.log", "a") as f:
-            f.write("App: Pushing VideoDetailScreen\n")
         self.push_screen(VideoDetailScreen(event.entry))
 
     def _start_job(self, url: str, custom_filename: str | None) -> None:
