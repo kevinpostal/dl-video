@@ -5,36 +5,51 @@ from textual.containers import Container, Horizontal
 from textual.message import Message
 from textual.widgets import Button, Input, Label, Static
 
-from textual_autocomplete import AutoComplete, Dropdown, DropdownItem
-
 from dl_video.utils.validator import URLValidator
+
+# Optional autocomplete support
+try:
+    from textual_autocomplete import AutoComplete, Dropdown, DropdownItem
+    HAS_AUTOCOMPLETE = True
+except ImportError:
+    HAS_AUTOCOMPLETE = False
+    AutoComplete = None
+    Dropdown = None
+    DropdownItem = None
 
 
 # Common video site prefixes for autocomplete
-URL_PREFIXES = [
-    DropdownItem("https://www.youtube.com/watch?v="),
-    DropdownItem("https://youtu.be/"),
-    DropdownItem("https://twitter.com/"),
-    DropdownItem("https://x.com/"),
-    DropdownItem("https://vimeo.com/"),
-    DropdownItem("https://www.twitch.tv/"),
-    DropdownItem("https://www.tiktok.com/"),
-    DropdownItem("https://www.instagram.com/"),
-    DropdownItem("https://www.reddit.com/"),
-    DropdownItem("https://streamable.com/"),
-]
+def _get_url_prefixes():
+    if not HAS_AUTOCOMPLETE:
+        return []
+    return [
+        DropdownItem("https://www.youtube.com/watch?v="),
+        DropdownItem("https://youtu.be/"),
+        DropdownItem("https://twitter.com/"),
+        DropdownItem("https://x.com/"),
+        DropdownItem("https://vimeo.com/"),
+        DropdownItem("https://www.twitch.tv/"),
+        DropdownItem("https://www.tiktok.com/"),
+        DropdownItem("https://www.instagram.com/"),
+        DropdownItem("https://www.reddit.com/"),
+        DropdownItem("https://streamable.com/"),
+    ]
 
 
-class URLAutoComplete(AutoComplete):
+class URLAutoComplete:
     """AutoComplete for video URLs with common prefixes."""
 
     def __init__(self, input_widget: Input, history: list[str] | None = None) -> None:
         self._history = history or []
-        super().__init__(input_widget, Dropdown(items=self._get_items))
+        self._input_widget = input_widget
+        self._widget = None
+        
+        if HAS_AUTOCOMPLETE:
+            self._widget = AutoComplete(input_widget, Dropdown(items=self._get_items))
 
-    def _get_items(self, value: str) -> list[DropdownItem]:
+    def _get_items(self, value: str) -> list:
         """Get autocomplete items based on current input."""
-        if not value:
+        if not HAS_AUTOCOMPLETE or not value:
             return []
         
         items = []
@@ -46,7 +61,7 @@ class URLAutoComplete(AutoComplete):
                 items.append(DropdownItem(url))
         
         # Add matching prefixes
-        for prefix in URL_PREFIXES:
+        for prefix in _get_url_prefixes():
             if value_lower in prefix.main.lower() and prefix.main not in [i.main for i in items]:
                 items.append(prefix)
         
@@ -58,6 +73,11 @@ class URLAutoComplete(AutoComplete):
             self._history.insert(0, url)
             # Keep only last 50 URLs
             self._history = self._history[:50]
+
+    @property
+    def widget(self):
+        """Get the underlying autocomplete widget (if available)."""
+        return self._widget
 
 
 class InputForm(Container):
@@ -110,9 +130,10 @@ class InputForm(Container):
         url_input = self.query_one("#url-input", Input)
         url_input.focus()
         
-        # Set up autocomplete
+        # Set up autocomplete (if available)
         self._autocomplete = URLAutoComplete(url_input, self._url_history)
-        self.mount(self._autocomplete)
+        if self._autocomplete.widget:
+            self.mount(self._autocomplete.widget)
         
         # Validate initial URL if provided
         if self._initial_url:
