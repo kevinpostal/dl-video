@@ -61,6 +61,13 @@ install:
 		echo "Installing uv..."; \
 		curl -LsSf https://astral.sh/uv/install.sh | sh; \
 		. $$HOME/.local/bin/env; \
+		if [ -f "$$HOME/.zshrc" ] && ! grep -q '.local/bin/env' "$$HOME/.zshrc" 2>/dev/null; then \
+			echo '. "$$HOME/.local/bin/env"' >> "$$HOME/.zshrc"; \
+			echo "Added uv to ~/.zshrc"; \
+		elif [ -f "$$HOME/.bashrc" ] && ! grep -q '.local/bin/env' "$$HOME/.bashrc" 2>/dev/null; then \
+			echo '. "$$HOME/.local/bin/env"' >> "$$HOME/.bashrc"; \
+			echo "Added uv to ~/.bashrc"; \
+		fi; \
 	fi; \
 	uv sync
 
