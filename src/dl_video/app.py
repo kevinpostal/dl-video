@@ -503,8 +503,28 @@ class VideoDetailScreen(ModalScreen[None]):
 
     def on_mount(self) -> None:
         """Load thumbnail when screen mounts."""
+        with open("/tmp/dl-video-debug.log", "a") as f:
+            f.write("VideoDetailScreen: on_mount called\n")
         if self._entry.metadata and self._entry.metadata.thumbnail_url:
             self.run_worker(self._load_thumbnail())
+
+    def on_unmount(self) -> None:
+        """Log when screen is unmounted."""
+        with open("/tmp/dl-video-debug.log", "a") as f:
+            f.write("VideoDetailScreen: on_unmount called\n")
+            import traceback
+            f.write("".join(traceback.format_stack()))
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        with open("/tmp/dl-video-debug.log", "a") as f:
+            f.write(f"VideoDetailScreen: Button pressed: {event.button.id}\n")
+        if event.button.id == "close-btn":
+            self.dismiss(None)
+
+    def action_close(self) -> None:
+        with open("/tmp/dl-video-debug.log", "a") as f:
+            f.write("VideoDetailScreen: action_close called\n")
+        self.dismiss(None)
 
     async def _load_thumbnail(self) -> None:
         """Fetch and display thumbnail image, using cache when available."""
@@ -580,10 +600,6 @@ class VideoDetailScreen(ModalScreen[None]):
         except Exception:
             pass
 
-    def on_button_pressed(self, event: Button.Pressed) -> None:
-        if event.button.id == "close-btn":
-            self.dismiss(None)
-
     def on_click(self, event) -> None:
         """Handle click on thumbnail to open in browser."""
         widget = event.widget
@@ -597,9 +613,6 @@ class VideoDetailScreen(ModalScreen[None]):
             import webbrowser
             if self._entry.metadata and self._entry.metadata.thumbnail_url:
                 webbrowser.open(self._entry.metadata.thumbnail_url)
-
-    def action_close(self) -> None:
-        self.dismiss(None)
 
 
 class DLVideoApp(App):
