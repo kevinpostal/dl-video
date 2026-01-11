@@ -504,7 +504,7 @@ class VideoDetailScreen(ModalScreen[None]):
     def on_mount(self) -> None:
         """Load thumbnail when screen mounts."""
         if self._entry.metadata and self._entry.metadata.thumbnail_url:
-            self.run_worker(self._load_thumbnail(), exclusive=True)
+            self.run_worker(self._load_thumbnail())
 
     async def _load_thumbnail(self) -> None:
         """Fetch and display thumbnail image, using cache when available."""
@@ -872,6 +872,9 @@ class DLVideoApp(App):
 
     def on_log_history_panel_info_requested(self, event: LogHistoryPanel.InfoRequested) -> None:
         """Handle info icon click - show video details modal."""
+        # Prevent duplicate pushes
+        if any(isinstance(s, VideoDetailScreen) for s in self.screen_stack):
+            return
         self.push_screen(VideoDetailScreen(event.entry))
 
     def _start_job(self, url: str, custom_filename: str | None) -> None:

@@ -64,7 +64,9 @@ class ThumbnailCache:
         if not cache_path.exists():
             return None
         try:
-            return Image.open(cache_path)
+            image = Image.open(cache_path)
+            image.load()  # Force load image data into memory
+            return image
         except Exception:
             # Corrupted cache file, remove it
             cache_path.unlink(missing_ok=True)
