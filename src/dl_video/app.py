@@ -534,8 +534,8 @@ class VideoDetailScreen(ModalScreen[None]):
         """Close modal when clicking on the background."""
         if not self._mounted:
             return
-        # Check if the click is directly on the screen (the semi-transparent background)
-        if event.widget is self:
+        # When clicking on the modal background, event.widget is None
+        if event.widget is None:
             self.dismiss(None)
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
