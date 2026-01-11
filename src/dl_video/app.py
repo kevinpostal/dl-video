@@ -368,7 +368,8 @@ class VideoDetailScreen(ModalScreen[None]):
     }
     
     VideoDetailScreen .thumbnail-container {
-        height: 16;
+        height: auto;
+        max-height: 20;
         width: 100%;
         margin-bottom: 1;
     }
@@ -376,7 +377,7 @@ class VideoDetailScreen(ModalScreen[None]):
     VideoDetailScreen .thumbnail-loading {
         color: $text-muted;
         text-align: center;
-        height: 16;
+        height: 10;
         content-align: center middle;
     }
 
@@ -562,6 +563,13 @@ class VideoDetailScreen(ModalScreen[None]):
                 # Convert to RGB if needed (some images are RGBA or palette)
                 if image.mode not in ('RGB', 'L'):
                     image = image.convert('RGB')
+                
+                # Resize to fit container width while maintaining aspect ratio
+                # Target width ~60 chars (container is 70 wide minus padding)
+                target_width = 400  # pixels, will be scaled by terminal
+                aspect_ratio = image.height / image.width
+                target_height = int(target_width * aspect_ratio)
+                image = image.resize((target_width, target_height), PILImage.Resampling.LANCZOS)
                 
                 # Replace placeholder with actual image
                 container = self.query_one("#thumbnail-container", Container)
