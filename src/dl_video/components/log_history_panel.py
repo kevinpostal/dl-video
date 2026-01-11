@@ -232,19 +232,24 @@ class LogHistoryPanel(Container):
         
         if not message.strip():
             return
-            
+        
         verbose_scroll = self.query_one("#verbose-scroll", VerticalScroll)
-        # Color-code based on content
+        
+        # Escape Rich markup characters to prevent parsing errors
+        safe_message = message.replace("[", r"\[").replace("]", r"\]")
+        
+        # Color-code based on content (check original message)
         if message.startswith("[debug]"):
-            styled = f"[dim]{message}[/dim]"
+            styled = f"[dim]{safe_message}[/dim]"
         elif message.startswith("ERROR"):
-            styled = f"[red]{message}[/red]"
+            styled = f"[red]{safe_message}[/red]"
         elif message.startswith("[download]"):
-            styled = f"[cyan]{message}[/cyan]"
+            styled = f"[cyan]{safe_message}[/cyan]"
         elif message.startswith("[info]"):
-            styled = f"[blue]{message}[/blue]"
+            styled = f"[blue]{safe_message}[/blue]"
         else:
-            styled = message
+            styled = safe_message
+        
         line = Static(styled, markup=True, classes="verbose-line")
         verbose_scroll.mount(line)
         line.scroll_visible()
