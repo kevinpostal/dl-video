@@ -518,22 +518,25 @@ class VideoDetailScreen(ModalScreen[None]):
         self._mounted = True
 
     def on_click(self, event) -> None:
-        """Handle clicks - close if clicking outside the modal container."""
-        # Check if click is on the modal background (VideoDetailScreen itself)
-        if event.widget is self and self._mounted:
-            self.dismiss(None)
-            return
-        
-        # Handle thumbnail URL clicks
+        """Handle clicks on thumbnail URLs."""
         widget = event.widget
-        if isinstance(widget, Static) and widget.id == "thumbnail-url":
-            import webbrowser
-            if self._entry.metadata and self._entry.metadata.thumbnail_url:
-                webbrowser.open(self._entry.metadata.thumbnail_url)
-        elif isinstance(widget, Static) and widget.id == "thumbnail-placeholder":
-            import webbrowser
-            if self._entry.metadata and self._entry.metadata.thumbnail_url:
-                webbrowser.open(self._entry.metadata.thumbnail_url)
+        if isinstance(widget, Static):
+            if widget.id == "thumbnail-url":
+                import webbrowser
+                if self._entry.metadata and self._entry.metadata.thumbnail_url:
+                    webbrowser.open(self._entry.metadata.thumbnail_url)
+            elif widget.id == "thumbnail-placeholder":
+                import webbrowser
+                if self._entry.metadata and self._entry.metadata.thumbnail_url:
+                    webbrowser.open(self._entry.metadata.thumbnail_url)
+
+    def on_mouse_down(self, event) -> None:
+        """Close modal when clicking on the background."""
+        if not self._mounted:
+            return
+        # Check if the click is directly on the screen (the semi-transparent background)
+        if event.widget is self:
+            self.dismiss(None)
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         if event.button.id == "close-btn":
