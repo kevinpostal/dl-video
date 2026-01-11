@@ -78,7 +78,7 @@ class HistoryRow(Horizontal):
         super().__init__(classes="history-row")
         self._entry = entry
         self._index = index
-        self._info_clicked = False
+        self._handling_click = False
 
     def compose(self) -> ComposeResult:
         yield Static(str(self._index), classes="history-num")
@@ -93,16 +93,27 @@ class HistoryRow(Horizontal):
 
     def on_click(self, event) -> None:
         """Handle clicks on this row."""
+        # Debounce - prevent handling multiple click events
+        if self._handling_click:
+            event.stop()
+            return
+        
+        self._handling_click = True
+        self.set_timer(0.1, self._reset_click_flag)
+        
         # Check if clicked on info icon
         if isinstance(event.widget, Static) and "history-info" in event.widget.classes:
             if self._entry.metadata:
                 event.stop()
                 self.post_message(self.InfoClicked(self._entry))
-                return
-        
-        # Otherwise it's a row click
-        event.stop()
-        self.post_message(self.RowClicked(self._entry))
+        else:
+            # Row click (not info icon)
+            event.stop()
+            self.post_message(self.RowClicked(self._entry))
+
+    def _reset_click_flag(self) -> None:
+        """Reset the click handling flag."""
+        self._handling_click = False
 
     def _format_size(self, size: int | None) -> str:
         if size is None:
