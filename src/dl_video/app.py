@@ -529,7 +529,11 @@ class VideoDetailScreen(ModalScreen[None]):
         from io import BytesIO
         
         try:
-            from textual_image.widget import Image as ImageWidget
+            # Try TGP (Kitty protocol) first for Ghostty/Kitty, fall back to auto
+            try:
+                from textual_image.widget import TGPImage as ImageWidget
+            except ImportError:
+                from textual_image.widget import Image as ImageWidget
         except ImportError as e:
             # textual-image not available, show URL instead
             self._show_thumbnail_fallback(f"Import error: {e}")
