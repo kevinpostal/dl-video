@@ -371,6 +371,7 @@ class VideoDetailScreen(ModalScreen[None]):
         height: 18;
         width: 100%;
         margin-bottom: 1;
+        align: center middle;
     }
     
     VideoDetailScreen .thumbnail-loading {
@@ -564,10 +565,6 @@ class VideoDetailScreen(ModalScreen[None]):
             img_widget = ImageWidget(image)
             container.mount(img_widget)
         except Exception as e:
-            import sys
-            print(f"DEBUG thumbnail error: {e}", file=sys.stderr)
-            import traceback
-            traceback.print_exc()
             # On any error, show fallback with error info
             self._show_thumbnail_fallback(str(e))
 
