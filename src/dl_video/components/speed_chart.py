@@ -37,13 +37,14 @@ class SpeedChart(Container):
     }
     """
 
-    def __init__(self, max_points: int = 60) -> None:
+    def __init__(self, max_points: int = 60, **kwargs) -> None:
         """Initialize the speed chart.
         
         Args:
             max_points: Maximum number of data points to display.
+            **kwargs: Additional arguments passed to Container.
         """
-        super().__init__()
+        super().__init__(**kwargs)
         self._max_points = max_points
         self._speeds: deque[float] = deque(maxlen=max_points)
         self._times: deque[int] = deque(maxlen=max_points)
