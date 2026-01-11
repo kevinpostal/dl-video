@@ -641,6 +641,7 @@ class DLVideoApp(App):
         yield Header()
         with Vertical(id="main-container"):
             yield InputForm(initial_url=self.initial_url)
+            yield SettingsPanel(self._config)
             yield JobsPanel()
             yield SpeedChart(id="speed-chart")
             yield LogHistoryPanel()
