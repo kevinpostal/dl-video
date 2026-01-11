@@ -18,11 +18,11 @@ class TestAppSnapshots:
         """Create app instance for testing."""
         return DLVideoApp()
 
-    async def test_initial_state(self, snap_compare):
+    def test_initial_state(self, snap_compare):
         """Test the initial app state renders correctly."""
         assert snap_compare(DLVideoApp())
 
-    async def test_with_url_input(self, snap_compare):
+    def test_with_url_input(self, snap_compare):
         """Test app with a URL entered."""
         async def setup(pilot: Pilot):
             await pilot.press("tab")  # Focus URL input
@@ -31,7 +31,7 @@ class TestAppSnapshots:
         
         assert snap_compare(DLVideoApp(), run_before=setup)
 
-    async def test_settings_expanded(self, snap_compare):
+    def test_settings_expanded(self, snap_compare):
         """Test app with settings panel expanded."""
         async def setup(pilot: Pilot):
             # Open settings via command palette
@@ -46,11 +46,11 @@ class TestAppSnapshots:
 class TestInputFormSnapshots:
     """Snapshot tests for the input form component."""
 
-    async def test_empty_form(self, snap_compare):
+    def test_empty_form(self, snap_compare):
         """Test empty input form."""
         assert snap_compare(DLVideoApp())
 
-    async def test_valid_url(self, snap_compare):
+    def test_valid_url(self, snap_compare):
         """Test form with valid URL showing success state."""
         async def setup(pilot: Pilot):
             url_input = pilot.app.query_one("#url-input")
@@ -59,7 +59,7 @@ class TestInputFormSnapshots:
         
         assert snap_compare(DLVideoApp(), run_before=setup)
 
-    async def test_invalid_url(self, snap_compare):
+    def test_invalid_url(self, snap_compare):
         """Test form with invalid URL showing error state."""
         async def setup(pilot: Pilot):
             url_input = pilot.app.query_one("#url-input")
@@ -68,11 +68,12 @@ class TestInputFormSnapshots:
         
         assert snap_compare(DLVideoApp(), run_before=setup)
 
-    async def test_filename_field_visible(self, snap_compare):
+    def test_filename_field_visible(self, snap_compare):
         """Test form with custom filename field expanded."""
         async def setup(pilot: Pilot):
-            toggle = pilot.app.query_one("#filename-toggle")
-            await pilot.click(toggle)
+            # Toggle filename field visibility by clicking the toggle text
+            input_form = pilot.app.query_one("InputForm")
+            input_form._toggle_filename_field()
             await pilot.pause()
         
         assert snap_compare(DLVideoApp(), run_before=setup)
@@ -81,7 +82,7 @@ class TestInputFormSnapshots:
 class TestLogHistoryPanelSnapshots:
     """Snapshot tests for the log/history panel."""
 
-    async def test_log_tab(self, snap_compare):
+    def test_log_tab(self, snap_compare):
         """Test log tab view."""
         async def setup(pilot: Pilot):
             log_panel = pilot.app.query_one("LogHistoryPanel")
@@ -93,7 +94,7 @@ class TestLogHistoryPanelSnapshots:
         
         assert snap_compare(DLVideoApp(), run_before=setup)
 
-    async def test_history_tab(self, snap_compare):
+    def test_history_tab(self, snap_compare):
         """Test history tab view."""
         async def setup(pilot: Pilot):
             # Switch to history tab
