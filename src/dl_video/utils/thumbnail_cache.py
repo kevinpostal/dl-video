@@ -88,7 +88,7 @@ class ThumbnailCache:
     def process_and_save(self, url: str, data: bytes) -> Image.Image:
         """Process image data and save to cache.
         
-        Converts to RGB and caches.
+        Converts to RGB and scales to fit container width.
         
         Args:
             url: Thumbnail URL (for cache key)
@@ -102,6 +102,15 @@ class ThumbnailCache:
         # Convert to RGB if needed
         if image.mode not in ('RGB', 'L'):
             image = image.convert('RGB')
+        
+        # Scale to fit container width (approx 85 chars * 2 pixels = 170px effective)
+        # But for Kitty protocol, we want actual pixels - target ~680px width
+        target_width = 680
+        if image.width != target_width:
+            scale = target_width / image.width
+            new_width = target_width
+            new_height = int(image.height * scale)
+            image = image.resize((new_width, new_height), Image.Resampling.LANCZOS)
         
         self.save(url, image)
         return image

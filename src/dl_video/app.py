@@ -368,7 +368,8 @@ class VideoDetailScreen(ModalScreen[None]):
     }
     
     VideoDetailScreen .thumbnail-container {
-        height: 20;
+        height: auto;
+        max-height: 24;
         width: 100%;
         margin-bottom: 1;
         overflow: hidden;
