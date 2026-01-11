@@ -275,6 +275,8 @@ class LogHistoryPanel(Container):
             parent = widget.parent
             if isinstance(parent, LogLine) and parent.url:
                 self.post_message(self.UrlClicked(parent.url))
+                event.stop()
+                event.prevent_default()
                 return
         
         # Check if clicked on info icon
@@ -282,6 +284,8 @@ class LogHistoryPanel(Container):
             parent = widget.parent
             if isinstance(parent, HistoryRow) and parent._entry.metadata:
                 self.post_message(self.InfoRequested(parent._entry))
+                event.stop()
+                event.prevent_default()
                 return
         
         # Check for history row (copy URL on click)
