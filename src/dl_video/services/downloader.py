@@ -152,10 +152,6 @@ class VideoDownloader:
             url,
         ]
         
-        # Add verbose flag if callback provided
-        if verbose_callback:
-            cmd.insert(1, "--verbose")
-        
         # Add cookies from browser if configured
         if self._cookies_browser:
             cmd.insert(1, "--cookies-from-browser")

@@ -225,6 +225,14 @@ class LogHistoryPanel(Container):
 
     def log_verbose(self, message: str) -> None:
         """Add a line to the verbose output."""
+        import re
+        # Strip ANSI escape codes
+        ansi_escape = re.compile(r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])')
+        message = ansi_escape.sub('', message)
+        
+        if not message.strip():
+            return
+            
         verbose_scroll = self.query_one("#verbose-scroll", VerticalScroll)
         # Color-code based on content
         if message.startswith("[debug]"):
