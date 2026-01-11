@@ -29,7 +29,7 @@ A terminal UI application for downloading, converting, and sharing videos. Built
 
 ```bash
 # Clone the repository
-git clone https://github.com/yourusername/dl-video.git
+git clone https://github.com/kevinpostal/dl-video.git
 cd dl-video
 
 # Install dependencies
