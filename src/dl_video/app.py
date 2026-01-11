@@ -393,6 +393,13 @@ class VideoDetailScreen(ModalScreen[None]):
         super().__init__()
         self._entry = entry
         self._thumbnail_widget = None
+        self._mounted = False
+
+    def on_key(self, event) -> None:
+        """Handle key events - allow escape to close after mount is complete."""
+        if event.key == "escape" and self._mounted:
+            event.stop()
+            self.dismiss(None)
 
     def compose(self) -> ComposeResult:
         entry = self._entry
@@ -505,6 +512,8 @@ class VideoDetailScreen(ModalScreen[None]):
             f.write("VideoDetailScreen: on_mount called\n")
         if self._entry.metadata and self._entry.metadata.thumbnail_url:
             self.run_worker(self._load_thumbnail())
+        # Set mounted flag after a short delay to avoid the spurious key event
+        self.set_timer(0.2, self._set_mounted)
 
     def on_unmount(self) -> None:
         """Log when screen is unmounted."""
@@ -512,6 +521,10 @@ class VideoDetailScreen(ModalScreen[None]):
             f.write("VideoDetailScreen: on_unmount called\n")
             import traceback
             f.write("".join(traceback.format_stack()))
+
+    def _set_mounted(self) -> None:
+        """Set the mounted flag after delay."""
+        self._mounted = True
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         with open("/tmp/dl-video-debug.log", "a") as f:
