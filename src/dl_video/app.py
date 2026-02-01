@@ -14,6 +14,7 @@ from textual.widgets import Button, Footer, Header, Input, Label, Select, Static
 from textual.worker import Worker, WorkerState
 
 from dl_video.components import InputForm, JobsPanel, LogHistoryPanel, SpeedChart
+from dl_video.components.album_selection import AlbumSelectionScreen
 from dl_video.components.log_history_panel import HistoryEntry
 from dl_video.models import BackendType, Config, Job, OperationResult, OperationState, VideoMetadata
 from dl_video.services.container_service import ContainerService
@@ -1256,15 +1257,36 @@ class DLVideoApp(App):
             self._update_job_ui(job)
             
             metadata = await downloader.get_metadata(job.url)
-            job.title = metadata.title
-            log_panel.log_success(f"Found: {metadata.title}")
-            self._update_job_ui(job)
             
-            # Determine filename
-            if job.custom_filename:
-                filename = self._slugifier.slugify(job.custom_filename)
+            # Check if this is an album/carousel
+            if metadata.album_entries and len(metadata.album_entries) > 1:
+                log_panel.log_info(f"Album detected with {len(metadata.album_entries)} videos")
+                
+                # Show album selection modal
+                selected_entry = await self.push_screen_wait(AlbumSelectionScreen(metadata.album_entries))
+                
+                if selected_entry is None:
+                    # User cancelled
+                    job.state = OperationState.CANCELLED
+                    job.status_message = "Cancelled"
+                    self._update_job_ui(job)
+                    return OperationResult(success=False, error_message="Cancelled by user")
+                
+                # Update job URL and title to the selected video
+                job.url = selected_entry.url
+                job.title = selected_entry.title
+                log_panel.log_success(f"Selected: {selected_entry.title}")
+                
+                # Use album title + selected video title for filename
+                album_title = self._slugifier.slugify(metadata.title)
+                video_title = self._slugifier.slugify(selected_entry.title)
+                filename = f"{album_title}_{video_title}" if job.custom_filename is None else self._slugifier.slugify(job.custom_filename)
             else:
-                filename = self._slugifier.slugify(metadata.title)
+                job.title = metadata.title
+                log_panel.log_success(f"Found: {metadata.title}")
+                filename = self._slugifier.slugify(job.custom_filename) if job.custom_filename else self._slugifier.slugify(metadata.title)
+            
+            self._update_job_ui(job)
             
             # Prepare output path
             output_dir = self._config.download_dir

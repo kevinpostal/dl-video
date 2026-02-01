@@ -4,8 +4,8 @@
 
 TAILSCALE := /Applications/Tailscale.app/Contents/MacOS/Tailscale
 
-# Source uv env if available (for systems where uv is in ~/.local/bin)
-UV := . $$HOME/.local/bin/env 2>/dev/null || true; uv
+# Use uv directly (assumes it's in PATH after installation)
+UV := uv
 
 # Default container image
 CONTAINER_IMAGE := linuxserver/ffmpeg:latest
@@ -71,20 +71,13 @@ funnel-stop:
 
 # Install dependencies (installs uv if missing)
 install:
-	@. $$HOME/.local/bin/env 2>/dev/null || true; \
-	if ! command -v uv >/dev/null 2>&1; then \
+	@if ! command -v uv >/dev/null 2>&1; then \
 		echo "Installing uv..."; \
 		curl -LsSf https://astral.sh/uv/install.sh | sh; \
-		. $$HOME/.local/bin/env; \
-		if [ -f "$$HOME/.zshrc" ] && ! grep -q '.local/bin/env' "$$HOME/.zshrc" 2>/dev/null; then \
-			echo '. "$$HOME/.local/bin/env"' >> "$$HOME/.zshrc"; \
-			echo "Added uv to ~/.zshrc"; \
-		elif [ -f "$$HOME/.bashrc" ] && ! grep -q '.local/bin/env' "$$HOME/.bashrc" 2>/dev/null; then \
-			echo '. "$$HOME/.local/bin/env"' >> "$$HOME/.bashrc"; \
-			echo "Added uv to ~/.bashrc"; \
-		fi; \
-	fi; \
-	uv sync
+		echo "Please restart your shell or run: source ~/.zshrc (or ~/.bashrc)"; \
+		exit 1; \
+	fi
+	@uv sync --reinstall-package dl-video
 
 # Install with dev dependencies
 dev:

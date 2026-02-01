@@ -87,6 +87,17 @@ class Job:
 
 
 @dataclass
+class AlbumEntry:
+    """Single entry in an album/carousel."""
+    
+    id: str
+    title: str
+    url: str
+    thumbnail_url: str | None = None
+    duration: int | None = None
+
+
+@dataclass
 class VideoMetadata:
     """Metadata for a video."""
 
@@ -125,6 +136,9 @@ class VideoMetadata:
     
     # Platform
     extractor: str | None = None  # e.g., "youtube", "twitter"
+    
+    # Album/carousel support
+    album_entries: list[AlbumEntry] | None = None
 
     @property
     def formatted_duration(self) -> str:

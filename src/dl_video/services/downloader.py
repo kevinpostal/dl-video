@@ -8,7 +8,7 @@ import re
 from pathlib import Path
 from typing import TYPE_CHECKING, Callable
 
-from dl_video.models import VideoMetadata
+from dl_video.models import AlbumEntry, VideoMetadata
 
 if TYPE_CHECKING:
     from dl_video.services.container_service import ContainerService
@@ -67,17 +67,18 @@ class VideoDownloader:
         Raises:
             DownloadError: If metadata fetch fails.
         """
+        # First try with --flat-playlist to detect albums/carousels
         cmd = [
             "yt-dlp",
             "--dump-json",
             "--no-download",
             "--no-warnings",
+            "--flat-playlist",
             "--js-runtimes",
             "node",
             url,
         ]
         
-        # Add cookies from browser if configured
         if self._cookies_browser:
             cmd.insert(1, "--cookies-from-browser")
             cmd.insert(2, self._cookies_browser)
@@ -94,7 +95,59 @@ class VideoDownloader:
                 error_msg = stderr.decode().strip() or "Unknown error"
                 raise DownloadError(f"Failed to fetch metadata: {error_msg}")
 
-            data = json.loads(stdout.decode())
+            # Parse JSON lines (one per entry in album/playlist)
+            lines = stdout.decode().strip().split('\n')
+            entries = [json.loads(line) for line in lines if line.strip()]
+            
+            # Check if this is an album/carousel (multiple entries)
+            if len(entries) > 1:
+                # Extract album entries
+                album_entries = []
+                for i, entry in enumerate(entries):
+                    album_entries.append(AlbumEntry(
+                        id=entry.get('id', str(i)),
+                        title=entry.get('title', f'Video {i+1}'),
+                        url=entry.get('url', url),
+                        thumbnail_url=entry.get('thumbnail'),
+                        duration=entry.get('duration'),
+                    ))
+                
+                # Use first entry for main metadata
+                data = entries[0]
+                
+                # Get resolution from first entry
+                resolution = None
+                width = data.get("width")
+                height = data.get("height")
+                if width and height:
+                    resolution = f"{width}x{height}"
+                
+                return VideoMetadata(
+                    title=data.get("title", "Unknown"),
+                    url=url,
+                    duration=data.get("duration", 0) or 0,
+                    uploader=data.get("uploader", "Unknown") or "Unknown",
+                    uploader_id=data.get("uploader_id"),
+                    channel=data.get("channel"),
+                    channel_id=data.get("channel_id"),
+                    view_count=data.get("view_count"),
+                    like_count=data.get("like_count"),
+                    comment_count=data.get("comment_count"),
+                    upload_date=data.get("upload_date"),
+                    description=data.get("description"),
+                    tags=data.get("tags"),
+                    categories=data.get("categories"),
+                    resolution=resolution,
+                    fps=data.get("fps"),
+                    vcodec=data.get("vcodec"),
+                    acodec=data.get("acodec"),
+                    thumbnail_url=data.get("thumbnail"),
+                    extractor=data.get("extractor"),
+                    album_entries=album_entries,
+                )
+            
+            # Single video - get full metadata without --flat-playlist
+            data = entries[0]
             
             # Extract resolution from format info
             resolution = None
