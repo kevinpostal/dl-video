@@ -221,7 +221,7 @@ class VideoConverter:
         assert self._container_service is not None
 
         if verbose_callback:
-            verbose_callback(f"[ffmpeg] Command: ffmpeg -i {input_path.name} -c:v libx264 -crf 23 -c:a aac {output_path.name}")
+            verbose_callback(f"[ffmpeg] Command: ffmpeg -i {input_path.name} -vf scale=1280:-2 -c:v libx264 -profile:v baseline -level 3.0 -pix_fmt yuv420p -movflags +faststart -crf 28 -preset slow -c:a aac -b:a 96k {output_path.name}")
 
         # Build ffmpeg arguments (without -i input and output path)
         args = [
@@ -229,11 +229,16 @@ class VideoConverter:
             "-progress", "pipe:1",  # Output progress to stdout
             "-nostats",  # Don't show encoding stats
             "-loglevel", "info" if verbose_callback else "error",
+            "-vf", "scale=1280:-2",  # Scale to 1280px width
             "-c:v", "libx264",  # Video codec
-            "-preset", "medium",  # Encoding preset
-            "-crf", "23",  # Quality (lower = better, 18-28 is reasonable)
+            "-profile:v", "baseline",  # H.264 baseline profile
+            "-level", "3.0",  # H.264 level 3.0
+            "-pix_fmt", "yuv420p",  # Pixel format
+            "-movflags", "+faststart",  # Enable streaming
+            "-crf", "28",  # Quality (higher = smaller file)
+            "-preset", "slow",  # Slower encoding for better compression
             "-c:a", "aac",  # Audio codec
-            "-b:a", "128k",  # Audio bitrate
+            "-b:a", "96k",  # Audio bitrate
         ]
 
         current_time = 0.0
@@ -337,21 +342,31 @@ class VideoConverter:
             "-nostats",  # Don't show encoding stats
             "-loglevel",
             loglevel,
+            "-vf",
+            "scale=1280:-2",  # Scale to 1280px width
             "-c:v",
             "libx264",  # Video codec
-            "-preset",
-            "medium",  # Encoding preset
+            "-profile:v",
+            "baseline",  # H.264 baseline profile
+            "-level",
+            "3.0",  # H.264 level 3.0
+            "-pix_fmt",
+            "yuv420p",  # Pixel format
+            "-movflags",
+            "+faststart",  # Enable streaming
             "-crf",
-            "23",  # Quality (lower = better, 18-28 is reasonable)
+            "28",  # Quality (higher = smaller file)
+            "-preset",
+            "slow",  # Slower encoding for better compression
             "-c:a",
             "aac",  # Audio codec
             "-b:a",
-            "128k",  # Audio bitrate
+            "96k",  # Audio bitrate
             str(output_path),
         ]
         
         if verbose_callback:
-            verbose_callback(f"[ffmpeg] Command: ffmpeg -i {input_path.name} -c:v libx264 -crf 23 -c:a aac {output_path.name}")
+            verbose_callback(f"[ffmpeg] Command: ffmpeg -i {input_path.name} -vf scale=1280:-2 -c:v libx264 -profile:v baseline -level 3.0 -pix_fmt yuv420p -movflags +faststart -crf 28 -preset slow -c:a aac -b:a 96k {output_path.name}")
 
         try:
             self._process = await asyncio.create_subprocess_exec(
