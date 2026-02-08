@@ -2,10 +2,16 @@
 
 .DEFAULT_GOAL := help
 
+# Use bash for better compatibility
+SHELL := /bin/bash
+
 TAILSCALE := /Applications/Tailscale.app/Contents/MacOS/Tailscale
 
 # Source uv env if available (for systems where uv is in ~/.local/bin)
 UV := . $$HOME/.local/bin/env 2>/dev/null || true; uv
+
+# Use external virtualenv (matching .envrc)
+export UV_PROJECT_ENVIRONMENT := $(HOME)/.virtualenvs/dl-video
 
 # Default container image
 CONTAINER_IMAGE := linuxserver/ffmpeg:latest
