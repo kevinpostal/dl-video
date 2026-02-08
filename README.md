@@ -1,122 +1,92 @@
 # dl-video
 
-A terminal UI application for downloading, converting, and sharing videos. Built with [Textual](https://textual.textualize.io/).
+A TUI for downloading videos. Built with [Textual](https://textual.textualize.io/).
 
-![dl-video demo](demo.gif)
+![demo](demo.gif)
 
-![Python](https://img.shields.io/badge/python-3.11+-blue.svg)
-![License](https://img.shields.io/badge/license-MIT-green.svg)
+## What it does
 
-## Features
+Paste a URL, hit enter, get a video file. That's the basic idea.
 
-- 🎬 Download videos from YouTube and other sites (via yt-dlp)
-- 🔄 Convert to MP4 (via ffmpeg)
-- ☁️ Upload to upload.beer with one click
-- 📋 Auto-copy upload URLs to clipboard
-- 📜 Download history with metadata
-- 🖼️ Video thumbnail previews
-- ⚙️ Configurable settings (cookies, download folder, etc.)
-- 🌐 Web access via Tailscale Funnel
-- 🐳 Container support - run without installing dependencies
+- Downloads from YouTube, TikTok, Twitter, etc (anything [yt-dlp](https://github.com/yt-dlp/yt-dlp) supports)
+- Converts to MP4 automatically (if you want)
+- Can upload to [upload.beer](https://upload.beer) and copy the link
+- Shows thumbnails and metadata
+- Works in the browser too (via Tailscale Funnel)
 
-## Quick Start
+## Quick start
 
-### Option 1: Container (Recommended)
+**Option 1: Container (easiest)**
 
-No Python or dependencies needed - just Podman (or Docker):
+No Python setup needed, just Podman:
 
 ```bash
-# Build the container
 make app-build
-
-# Run (downloads to ~/Downloads)
 make app-run
 ```
 
-### Option 2: Local Installation
+**Option 2: Local**
 
 ```bash
-# Install dependencies
 make install
-
-# Run
 make run
 ```
 
 ## Requirements
 
-**For container mode:**
-- [Podman](https://podman.io/) or Docker
+**Container mode:**
+- [Podman](https://podman.io/)
 
-**For local installation:**
+**Local mode:**
 - Python 3.11+
 - [yt-dlp](https://github.com/yt-dlp/yt-dlp)
 - [ffmpeg](https://ffmpeg.org/)
-- [uv](https://github.com/astral-sh/uv) (recommended) or pip
+- [uv](https://github.com/astral-sh/uv) (recommended)
 
 ## Usage
 
 ```bash
-# Terminal mode
-make run
-
-# Web browser mode (local network)
-make serve
-
-# Public access via Tailscale Funnel
-make funnel
+make run          # Terminal UI
+make serve        # Web interface (local)
+make funnel       # Web interface (public via Tailscale)
 ```
 
-### Container Backend
+### Using container backend
 
-Run the app locally but execute downloads in containers (useful if you don't want to install yt-dlp/ffmpeg):
+Run the app locally but do the actual downloading in a container:
 
 ```bash
-# Pull the ffmpeg container image
-make container-pull
-
-# Run with container backend
-make run-container
+make container-pull   # One-time setup
+make run-container    # Run with container backend
 ```
 
-## Commands
+Good if you don't want to install yt-dlp/ffmpeg locally.
 
-| Command | Description |
-|---------|-------------|
-| `make run` | Run the app in terminal |
-| `make app-build` | Build containerized app |
-| `make app-run` | Run containerized app (downloads to ~/Downloads) |
-| `make run-container` | Run locally with container backend |
-| `make serve` | Serve via web browser |
-| `make funnel` | Public access via Tailscale Funnel |
-| `make test` | Run tests |
-| `make install` | Install dependencies |
+## Controls
 
-## Keyboard Shortcuts
-
-| Key | Action |
-|-----|--------|
-| `Enter` | Start download |
+| Key | What it does |
+|-----|--------------|
+| `Enter` | Download the URL |
 | `Ctrl+Q` | Quit |
-| `Ctrl+P` | Open command palette |
-| `Ctrl+O` | Open download folder |
+| `Ctrl+P` | Command palette |
+| `Ctrl+O` | Open downloads folder |
 
-## Configuration
+## Settings
 
-Settings are stored in `~/.config/dl-video/config.json`:
+Hit `Ctrl+P` → Settings, or edit `~/.config/dl-video/config.json`:
 
-- **Auto-upload**: Automatically upload after download
-- **Skip conversion**: Don't convert to MP4
-- **Cookies**: Browser to extract cookies from (for age-restricted videos)
-- **Download folder**: Where to save videos
+- **Auto-upload** - Upload immediately after download
+- **Skip conversion** - Keep original format
+- **Cookies** - Use browser cookies (helps with age-restricted stuff)
+- **Download folder** - Where videos go
 
 ## Development
 
 ```bash
-make dev      # Install dev dependencies
-make test     # Run tests
-make fmt      # Format code
-make lint     # Lint code
+make dev     # Install dev deps
+make test    # Run tests
+make fmt     # Format with ruff
+make lint    # Lint with ruff
 ```
 
 ## License
