@@ -1266,10 +1266,14 @@ class DLVideoApp(App):
             else:
                 filename = self._slugifier.slugify(metadata.title)
             
+            # Generate unique hash from URL (first 8 chars of MD5 for readability)
+            import hashlib
+            url_hash = hashlib.md5(job.url.encode()).hexdigest()[:8]
+            
             # Prepare output path
             output_dir = self._config.download_dir
             output_dir.mkdir(parents=True, exist_ok=True)
-            output_path = output_dir / f"{filename}.mp4"
+            output_path = output_dir / f"{filename}_{url_hash}.mp4"
             
             # Check for existing file
             if output_path.exists():
