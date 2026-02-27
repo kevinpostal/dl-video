@@ -10,7 +10,7 @@ Paste a URL, hit enter, get a video file. That's the basic idea.
 
 - Downloads from YouTube, TikTok, Twitter, etc (anything [yt-dlp](https://github.com/yt-dlp/yt-dlp) supports)
 - Converts to MP4 automatically (if you want)
-- Can upload to [upload.beer](https://upload.beer) and copy the link
+- Can upload to [jonesfilesandfootmassage.com](https://jonesfilesandfootmassage.com) and copy the link
 - Shows thumbnails and metadata
 - Works in the browser too (via Tailscale Funnel)
 

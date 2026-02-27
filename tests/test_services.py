@@ -297,7 +297,7 @@ class TestFileUploader:
 
         mock_response = MagicMock()
         mock_response.status_code = 200
-        mock_response.text = "https://upload.beer/u/abc123.mp4"
+        mock_response.text = "https://jonesfilesandfootmassage.com/u/abc123.mp4"
 
         with patch("httpx.AsyncClient") as mock_client_class:
             mock_client = AsyncMock()
@@ -308,7 +308,7 @@ class TestFileUploader:
 
             url = await uploader.upload(file_path, progress_callback)
 
-        assert url == "https://upload.beer/u/abc123.mp4"
+        assert url == "https://jonesfilesandfootmassage.com/u/abc123.mp4"
         assert len(progress_values) > 0
         assert progress_values[-1] == 100.0
 

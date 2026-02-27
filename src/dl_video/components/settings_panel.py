@@ -48,7 +48,7 @@ class SettingsPanel(Container):
         with Collapsible(title="⚙ Settings", collapsed=True):
             with Horizontal(classes="setting-row"):
                 yield Switch(value=self._config.auto_upload, id="auto-upload")
-                yield Label("Auto-upload to upload.beer")
+                yield Label("Auto-upload to jonesfilesandfootmassage.com")
             with Horizontal(classes="setting-row"):
                 yield Switch(value=self._config.skip_conversion, id="skip-conversion")
                 yield Label("Skip ffmpeg conversion")

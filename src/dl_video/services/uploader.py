@@ -1,4 +1,4 @@
-"""File uploader service for upload.beer."""
+"""File uploader service for jonesfilesandfootmassage.com."""
 
 import asyncio
 from pathlib import Path
@@ -14,9 +14,9 @@ class UploadError(Exception):
 
 
 class FileUploader:
-    """Service for uploading files to upload.beer."""
+    """Service for uploading files to jonesfilesandfootmassage.com."""
 
-    UPLOAD_URL = "https://upload.beer/"
+    UPLOAD_URL = "https://jonesfilesandfootmassage.com/"
     TIMEOUT = 600.0  # 10 minutes timeout for large files
 
     def __init__(self) -> None:
@@ -82,7 +82,7 @@ class FileUploader:
                 if self._cancelled:
                     raise UploadError("Upload cancelled")
 
-                # Upload to upload.beer using multipart form
+                # Upload to jonesfilesandfootmassage.com using multipart form
                 log("Uploading to server...")
                 files = {"file": (file_path.name, file_content)}
                 response = await client.post(self.UPLOAD_URL, files=files)

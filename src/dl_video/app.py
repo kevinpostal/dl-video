@@ -299,9 +299,9 @@ class UploadPromptScreen(ModalScreen[bool]):
 
     def compose(self) -> ComposeResult:
         with Container():
-            yield Label("Upload to upload.beer?", classes="title")
+            yield Label("Upload to jonesfilesandfootmassage.com?", classes="title")
             yield Label(
-                f"Would you like to upload '{self._filename}' to upload.beer?",
+                f"Would you like to upload '{self._filename}' to jonesfilesandfootmassage.com?",
                 classes="message",
             )
             with Horizontal(classes="buttons"):
@@ -401,7 +401,7 @@ class SettingsScreen(ModalScreen[None]):
             yield Label("⚙ Settings", classes="title")
             with Horizontal(classes="setting-row"):
                 yield Switch(value=self._config.auto_upload, id="auto-upload")
-                yield Label("Auto-upload to upload.beer")
+                yield Label("Auto-upload to jonesfilesandfootmassage.com")
             with Horizontal(classes="setting-row"):
                 yield Switch(value=self._config.skip_conversion, id="skip-conversion")
                 yield Label("Skip ffmpeg conversion")
@@ -1335,12 +1335,17 @@ class DLVideoApp(App):
             speed_chart.display = False
             
             # Phase 3: Convert (if enabled)
-            if job.include_conversion and downloaded_path.suffix.lower() != ".mp4":
+            # Always run ffmpeg for iMessage compatibility, even if already mp4
+            if job.include_conversion:
                 job.state = OperationState.CONVERTING
                 job.progress = 0
                 self._update_job_ui(job)
                 
-                converted_path = downloaded_path.with_suffix(".mp4")
+                # Use temp path if file is already .mp4 to avoid overwriting during conversion
+                if downloaded_path.suffix.lower() == ".mp4":
+                    converted_path = downloaded_path.with_suffix(".temp.mp4")
+                else:
+                    converted_path = downloaded_path.with_suffix(".mp4")
                 
                 def convert_progress(progress: float) -> None:
                     job.progress = progress
@@ -1352,11 +1357,13 @@ class DLVideoApp(App):
                 temp_files.append(converted_path)
                 log_panel.log_success(f"Converted: {converted_path.name}")
                 
-                try:
-                    downloaded_path.unlink()
-                    temp_files.remove(downloaded_path)
-                except Exception:
-                    pass
+                # Remove original file only if conversion output is different
+                if converted_path != downloaded_path:
+                    try:
+                        downloaded_path.unlink()
+                        temp_files.remove(downloaded_path)
+                    except Exception:
+                        pass
                 
                 output_path = converted_path
             else:
