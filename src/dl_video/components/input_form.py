@@ -33,6 +33,7 @@ def _get_url_prefixes():
         DropdownItem("https://www.instagram.com/"),
         DropdownItem("https://www.reddit.com/"),
         DropdownItem("https://streamable.com/"),
+        DropdownItem("https://getyarn.io/yarn-clip/"),
     ]
 
 

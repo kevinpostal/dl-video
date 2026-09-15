@@ -28,6 +28,7 @@ class URLValidator:
         r"https?://(www\.)?tiktok\.com/.+",
         r"https?://(www\.)?instagram\.com/(p|reel)/[\w-]+",
         r"https?://(www\.)?facebook\.com/.+/videos/\d+",
+        r"https?://(www\.)?getyarn\.io/yarn-clip/[\w-]+",
     ]
 
     def __init__(self) -> None:
