@@ -67,6 +67,8 @@ class VideoDownloader:
                     break
                 else:
                     last_error = stderr.decode().strip() or "Unknown error"
+            except FileNotFoundError:
+                raise DownloadError("yt-dlp is not installed. Please install it first.")
             except json.JSONDecodeError as e:
                 last_error = f"Failed to parse metadata: {e}"
         else:
@@ -302,11 +304,6 @@ class VideoDownloader:
 
                 error_msg = "\n".join(errors) if errors else "Unknown error"
                 last_error = error_msg
-                is_format_err = (
-                    "format not available" in error_msg.lower()
-                    or "--list-formats" in error_msg
-                    or "requested format" in error_msg.lower()
-                )
                 if i < len(attempts) - 1:
                     if verbose_callback:
                         verbose_callback(f"[info] Download failed with {desc}, trying fallback...")
@@ -314,7 +311,7 @@ class VideoDownloader:
                 raise DownloadError(f"Download failed: {error_msg}")
 
             except FileNotFoundError:
-                raise DownloadError("yt-dlp not found. Install it first.")
+                raise DownloadError("yt-dlp is not installed. Please install it first.")
             finally:
                 self._process = None
 
