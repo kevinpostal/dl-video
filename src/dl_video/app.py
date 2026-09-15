@@ -1208,7 +1208,7 @@ class DLVideoApp(App):
             'converter': VideoConverter(
                 container_service=self._container_service,
             ),
-            'uploader': FileUploader(),
+            'uploader': FileUploader(proxy=self._config.upload_proxy),
         }
         
         # Add to UI

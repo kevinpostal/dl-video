@@ -1,8 +1,6 @@
 """Unit tests for service layer."""
 
-import asyncio
 import json
-from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -374,6 +372,66 @@ class TestFileUploader:
                 await uploader.upload(file_path)
 
         assert "Upload timed out" in str(exc_info.value)
+
+    @pytest.mark.asyncio
+    async def test_upload_reports_tls_interception_with_workaround(self, tmp_path, monkeypatch):
+        """A hijacked TLS handshake must name the cause and the proxy workaround."""
+        import ssl
+
+        import httpx
+
+        monkeypatch.delenv(FileUploader.PROXY_ENV_VAR, raising=False)
+        file_path = tmp_path / "video.mp4"
+        file_path.write_bytes(b"fake video content")
+
+        hijacked = httpx.ConnectError("handshake failed")
+        hijacked.__cause__ = ssl.SSLError(
+            1, "[SSL: WRONG_VERSION_NUMBER] wrong version number (_ssl.c:1077)"
+        )
+
+        with patch("httpx.AsyncClient") as mock_client_class:
+            mock_client = AsyncMock()
+            mock_client.post = AsyncMock(side_effect=hijacked)
+            mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+            mock_client.__aexit__ = AsyncMock(return_value=None)
+            mock_client_class.return_value = mock_client
+
+            with pytest.raises(UploadError) as exc_info:
+                await FileUploader().upload(file_path)
+
+        message = str(exc_info.value)
+        assert "TLS handshake" in message
+        assert FileUploader.PROXY_ENV_VAR in message
+
+    @pytest.mark.asyncio
+    async def test_upload_cert_failure_not_blamed_on_interception(self, tmp_path, monkeypatch):
+        """A bad certificate is a real TLS peer, so a proxy is the wrong advice."""
+        import ssl
+
+        import httpx
+
+        monkeypatch.delenv(FileUploader.PROXY_ENV_VAR, raising=False)
+        file_path = tmp_path / "video.mp4"
+        file_path.write_bytes(b"fake video content")
+
+        cert_failure = httpx.ConnectError("certificate verify failed")
+        cert_failure.__cause__ = ssl.SSLCertVerificationError(
+            1, "[SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed"
+        )
+
+        with patch("httpx.AsyncClient") as mock_client_class:
+            mock_client = AsyncMock()
+            mock_client.post = AsyncMock(side_effect=cert_failure)
+            mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+            mock_client.__aexit__ = AsyncMock(return_value=None)
+            mock_client_class.return_value = mock_client
+
+            with pytest.raises(UploadError) as exc_info:
+                await FileUploader().upload(file_path)
+
+        message = str(exc_info.value)
+        assert FileUploader.PROXY_ENV_VAR not in message
+        assert "Network error" in message
 
     def test_cancel(self, uploader):
         """Test cancellation sets flag."""

@@ -10,7 +10,7 @@ readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
     "textual>=0.47.0",
-    "httpx>=0.27.0",
+    "httpx[socks]>=0.27.0",
     "pyperclip>=1.8.0",
     "textual-image[textual]>=0.7.0",
     "pillow>=10.0.0",

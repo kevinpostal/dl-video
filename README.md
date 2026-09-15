@@ -79,6 +79,10 @@ Hit `Ctrl+P` → Settings, or edit `~/.config/dl-video/config.json`:
 - **Skip conversion** - Keep original format
 - **Cookies** - Use browser cookies (helps with age-restricted stuff)
 - **Download folder** - Where videos go
+- **Upload proxy** (`upload_proxy`) - Send uploads through a proxy, e.g.
+  `socks5://127.0.0.1:1080`. Needed when a network filters the upload host: the
+  filter answers the TLS handshake with plaintext and the upload fails with an
+  SSL error. `DL_VIDEO_UPLOAD_PROXY` overrides it for a single run.
 
 ## Development
 

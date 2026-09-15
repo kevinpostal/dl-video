@@ -35,6 +35,9 @@ config_strategy = st.builds(
     cookies_browser=st.one_of(st.none(), st.sampled_from(["chrome", "firefox", "safari", "edge", "brave"])),
     execution_backend=st.sampled_from(["local", "container"]),
     container_image=st.one_of(st.none(), st.text(min_size=1, max_size=100).filter(lambda s: s.strip() != "")),
+    upload_proxy=st.one_of(
+        st.none(), st.sampled_from(["socks5://127.0.0.1:1080", "http://proxy.local:3128"])
+    ),
 )
 
 
@@ -70,6 +73,9 @@ class TestConfigManagerProperties:
             )
             assert loaded_config.skip_conversion == config.skip_conversion, (
                 f"skip_conversion mismatch: expected {config.skip_conversion}, got {loaded_config.skip_conversion}"
+            )
+            assert loaded_config.upload_proxy == config.upload_proxy, (
+                f"upload_proxy mismatch: expected {config.upload_proxy}, got {loaded_config.upload_proxy}"
             )
 
     @given(config_strategy)

@@ -31,6 +31,7 @@ class ConfigManager:
                 # New container settings with migration support for old configs
                 execution_backend=data.get("execution_backend", "local"),
                 container_image=data.get("container_image"),
+                upload_proxy=data.get("upload_proxy"),
             )
         except (json.JSONDecodeError, KeyError):
             return Config.default()
@@ -46,6 +47,7 @@ class ConfigManager:
             "cookies_browser": config.cookies_browser,
             "execution_backend": config.execution_backend,
             "container_image": config.container_image,
+            "upload_proxy": config.upload_proxy,
         }
 
         with open(self.config_path, "w") as f:
