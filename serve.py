@@ -2,8 +2,6 @@
 """Serve dl-video via web browser using textual-serve."""
 
 import os
-import subprocess
-import sys
 from textual_serve.server import Server
 
 # Ensure PATH includes common locations for yt-dlp, node, etc.

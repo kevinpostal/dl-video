@@ -2,7 +2,6 @@
 
 import subprocess
 import sys
-from typing import Optional
 
 
 class ClipboardError(Exception):

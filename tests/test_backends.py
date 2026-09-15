@@ -7,12 +7,13 @@ Validates: Requirements 3.3, 4.3
 
 import asyncio
 import sys
+from pathlib import Path
 
 import pytest
 from hypothesis import given, settings
 from hypothesis import strategies as st
 
-from dl_video.services.backends import LocalBackend
+from dl_video.services.backends import LocalBackend, PodmanBackend
 
 
 class TestLocalBackendProperties:
@@ -135,11 +136,6 @@ class TestLocalBackendProperties:
 
         assert callback_lines == collected_lines
         assert len(callback_lines) == 3
-
-
-from pathlib import Path
-
-from dl_video.services.backends import PodmanBackend
 
 
 class TestPodmanBackendProperties:

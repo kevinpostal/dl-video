@@ -3,7 +3,7 @@
 from textual.app import ComposeResult
 from textual.containers import Container, Horizontal
 from textual.message import Message
-from textual.widgets import Button, Label, ProgressBar, Static
+from textual.widgets import Button, Label, ProgressBar
 
 from dl_video.models import OperationState
 

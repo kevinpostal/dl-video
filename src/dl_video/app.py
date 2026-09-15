@@ -15,7 +15,7 @@ from textual.worker import Worker, WorkerState
 
 from dl_video.components import InputForm, JobsPanel, LogHistoryPanel, SpeedChart
 from dl_video.components.log_history_panel import HistoryEntry
-from dl_video.models import BackendType, Config, Job, OperationResult, OperationState, VideoMetadata
+from dl_video.models import BackendType, Config, Job, OperationResult, OperationState
 from dl_video.services.container_service import ContainerService
 from dl_video.services.converter import ConversionError, VideoConverter
 from dl_video.services.downloader import DownloadError, VideoDownloader
@@ -33,7 +33,7 @@ except ImportError:
     HAS_FSPICKER = False
 
 try:
-    from textual_slidecontainer import SlideContainer
+    from textual_slidecontainer import SlideContainer  # noqa: F401  # availability probe
     HAS_SLIDECONTAINER = True
 except ImportError:
     HAS_SLIDECONTAINER = False
@@ -665,19 +665,6 @@ class VideoDetailScreen(ModalScreen[None]):
         """Set the mounted flag after delay."""
         self._mounted = True
 
-    def on_click(self, event) -> None:
-        """Handle clicks on thumbnail URLs."""
-        widget = event.widget
-        if isinstance(widget, Static):
-            if widget.id == "thumbnail-url":
-                import webbrowser
-                if self._entry.metadata and self._entry.metadata.thumbnail_url:
-                    webbrowser.open(self._entry.metadata.thumbnail_url)
-            elif widget.id == "thumbnail-placeholder":
-                import webbrowser
-                if self._entry.metadata and self._entry.metadata.thumbnail_url:
-                    webbrowser.open(self._entry.metadata.thumbnail_url)
-
     def on_mouse_down(self, event) -> None:
         """Close modal when clicking on the background."""
         if not self._mounted:
@@ -1047,7 +1034,7 @@ class DLVideoApp(App):
     def on_jobs_panel_cancel_requested(self, event: JobsPanel.CancelRequested) -> None:
         self._cancel_job(event.job_id)
         log_panel = self.query_one(LogHistoryPanel)
-        log_panel.log_warning(f"Job cancelled")
+        log_panel.log_warning("Job cancelled")
 
     def on_log_history_panel_config_changed(self, event: LogHistoryPanel.ConfigChanged) -> None:
         old_backend = self._config.execution_backend

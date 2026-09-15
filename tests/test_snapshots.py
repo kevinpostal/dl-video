@@ -1,13 +1,11 @@
 """Snapshot tests for dl-video UI components."""
 
 import pytest
-from pathlib import Path
 
 from textual.pilot import Pilot
 
 # Import app and components
 from dl_video.app import DLVideoApp
-from dl_video.models import Config
 
 
 class TestAppSnapshots:

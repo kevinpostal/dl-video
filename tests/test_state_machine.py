@@ -5,7 +5,7 @@
 """
 
 import pytest
-from hypothesis import given, strategies as st, assume, settings
+from hypothesis import given, strategies as st, settings
 
 from dl_video.models import OperationState
 from dl_video.state_machine import (

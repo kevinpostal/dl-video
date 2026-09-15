@@ -9,7 +9,6 @@ from collections.abc import AsyncIterator, Callable
 from pathlib import Path
 from typing import Protocol
 
-from dl_video.models import CommandResult
 from dl_video.services.errors import (
     ContainerError,
     detect_error_from_output,
