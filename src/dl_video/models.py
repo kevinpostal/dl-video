@@ -140,12 +140,3 @@ class Config:
             auto_upload=True,
             skip_conversion=False,
         )
-
-
-@dataclass
-class OperationResult:
-    success: bool
-    output_path: Path | None = None
-    upload_url: str | None = None
-    error_message: str | None = None
-    file_size: int | None = None

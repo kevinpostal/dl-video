@@ -1,4 +1,4 @@
-"""File uploader service for jonesfilesandfootmassage.com."""
+"""File uploader service for files.brokejokes.com (brokejokes-files/ in this repo)."""
 
 import os
 import ssl
@@ -32,23 +32,42 @@ class UploadError(Exception):
     pass
 
 
-class FileUploader:
-    """Service for uploading files to jonesfilesandfootmassage.com."""
+def default_token_path() -> Path:
+    # Resolved lazily so Path.home() patches (tests) apply.
+    return Path.home() / ".config" / "dl-video" / "upload_token"
 
-    UPLOAD_URL = "https://jonesfilesandfootmassage.com/"
+
+class FileUploader:
+    """Service for uploading files to files.brokejokes.com."""
+
+    UPLOAD_URL = "https://files.brokejokes.com/upload"
     TIMEOUT = 600.0  # 10 minutes timeout for large files
     PROXY_ENV_VAR = "DL_VIDEO_UPLOAD_PROXY"
+    TOKEN_ENV_VAR = "DL_VIDEO_UPLOAD_TOKEN"
 
-    def __init__(self, proxy: str | None = None) -> None:
+    def __init__(self, proxy: str | None = None, token: str | None = None) -> None:
         """Initialize the uploader.
 
         Args:
             proxy: Proxy URL (e.g. socks5://host:1080) to route the upload through.
                 Falls back to the DL_VIDEO_UPLOAD_PROXY environment variable.
+            token: Bearer token for the upload server. Falls back to
+                DL_VIDEO_UPLOAD_TOKEN, then ~/.config/dl-video/upload_token.
         """
         self._cancelled = False
         self._client: httpx.AsyncClient | None = None
         self._proxy = proxy or os.environ.get(self.PROXY_ENV_VAR) or None
+        self._token = token or os.environ.get(self.TOKEN_ENV_VAR) or None
+
+    def _resolve_token(self) -> str:
+        if self._token:
+            return self._token
+        path = default_token_path()
+        if path.exists() and (token := path.read_text().strip()):
+            return token
+        raise UploadError(
+            f"No upload token: set {self.TOKEN_ENV_VAR} or write it to {path}"
+        )
 
     def _interception_message(self, detail: BaseException) -> str:
         """Build an actionable message for a TLS handshake the network broke."""
@@ -95,6 +114,8 @@ class FileUploader:
         if file_size == 0:
             raise UploadError("Cannot upload empty file")
 
+        token = self._resolve_token()
+
         def log(msg: str) -> None:
             if verbose_callback:
                 verbose_callback(f"[upload] {msg}")
@@ -115,40 +136,37 @@ class FileUploader:
                 if self._cancelled:
                     raise UploadError("Upload cancelled")
 
-                # Read file and upload
-                log("Reading file...")
-                with open(file_path, "rb") as f:
-                    file_content = f.read()
-
-                if progress_callback:
-                    progress_callback(50.0)  # Reading complete
-                log("File read complete")
-
-                if self._cancelled:
-                    raise UploadError("Upload cancelled")
-
-                # Upload to jonesfilesandfootmassage.com using multipart form
                 log("Uploading to server...")
-                files = {"file": (file_path.name, file_content)}
-                response = await client.post(self.UPLOAD_URL, files=files)
+                # An open file handle is streamed, not read into memory.
+                with open(file_path, "rb") as f:
+                    response = await client.post(
+                        self.UPLOAD_URL,
+                        files={"file": (file_path.name, f)},
+                        headers={"Authorization": f"Bearer {token}"},
+                    )
 
                 if progress_callback:
                     progress_callback(90.0)  # Upload complete
 
                 log(f"Server response: {response.status_code}")
 
-                if response.status_code != 200:
+                if response.status_code == 413:
+                    raise UploadError(
+                        f"Upload rejected: file too large ({file_size / (1024*1024):.0f} MB)"
+                    )
+                if response.status_code not in (200, 201):
                     log(f"ERROR: Upload failed - {response.text[:200]}")
                     raise UploadError(
                         f"Upload failed with status {response.status_code}"
                     )
 
-                # Parse response to get URL
-                url = response.text.strip()
-
-                if not url.startswith("http"):
-                    log(f"ERROR: Unexpected response - {url[:100]}")
-                    raise UploadError(f"Unexpected response: {url[:100]}")
+                try:
+                    url = response.json()["url"]
+                except (ValueError, KeyError, TypeError):
+                    url = None
+                if not isinstance(url, str) or not url.startswith("http"):
+                    log(f"ERROR: Unexpected response - {response.text[:100]}")
+                    raise UploadError(f"Unexpected response: {response.text[:100]}")
 
                 if progress_callback:
                     progress_callback(100.0)

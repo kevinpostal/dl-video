@@ -2,6 +2,7 @@
 
 import asyncio
 import os
+import time
 from collections.abc import Iterable
 from pathlib import Path
 
@@ -15,15 +16,17 @@ from textual.worker import Worker, WorkerState
 
 from dl_video.components import InputForm, JobsPanel, LogHistoryPanel, SpeedChart
 from dl_video.components.log_history_panel import HistoryEntry
-from dl_video.models import BackendType, Config, Job, OperationResult, OperationState
-from dl_video.services.container_service import ContainerService
-from dl_video.services.converter import ConversionError, VideoConverter
-from dl_video.services.downloader import DownloadError, VideoDownloader
-from dl_video.services.uploader import FileUploader, UploadError
+from dl_video.models import BackendType, Config, Job, OperationState
+from dl_video.pipeline import (
+    JobHooks,
+    JobServices,
+    create_container_service,
+    create_job_services,
+    run_job,
+)
 from dl_video.utils.config import ConfigManager
 from dl_video.utils.file_ops import open_file_in_folder, open_folder
-from dl_video.utils.history import HistoryManager, HistoryRecord, MetadataRecord
-from dl_video.utils.slugifier import Slugifier
+from dl_video.utils.history import HistoryManager
 
 # Optional imports for enhanced features
 try:
@@ -299,9 +302,9 @@ class UploadPromptScreen(ModalScreen[bool]):
 
     def compose(self) -> ComposeResult:
         with Container():
-            yield Label("Upload to jonesfilesandfootmassage.com?", classes="title")
+            yield Label("Upload to files.brokejokes.com?", classes="title")
             yield Label(
-                f"Would you like to upload '{self._filename}' to jonesfilesandfootmassage.com?",
+                f"Would you like to upload '{self._filename}' to files.brokejokes.com?",
                 classes="message",
             )
             with Horizontal(classes="buttons"):
@@ -401,7 +404,7 @@ class SettingsScreen(ModalScreen[None]):
             yield Label("⚙ Settings", classes="title")
             with Horizontal(classes="setting-row"):
                 yield Switch(value=self._config.auto_upload, id="auto-upload")
-                yield Label("Auto-upload to jonesfilesandfootmassage.com")
+                yield Label("Auto-upload to files.brokejokes.com")
             with Horizontal(classes="setting-row"):
                 yield Switch(value=self._config.skip_conversion, id="skip-conversion")
                 yield Label("Skip ffmpeg conversion")
@@ -767,6 +770,59 @@ class VideoDetailScreen(ModalScreen[None]):
                 webbrowser.open(self._entry.metadata.thumbnail_url)
 
 
+class _AppJobHooks(JobHooks):
+    """Routes pipeline events to the Textual UI."""
+
+    def __init__(self, app: "DLVideoApp", log_panel: LogHistoryPanel, speed_chart: SpeedChart) -> None:
+        self._app = app
+        self._log_panel = log_panel
+        self._speed_chart = speed_chart
+        self._last_progress = 0.0
+        self._last_time: float | None = None
+
+    def job_updated(self, job: Job) -> None:
+        self._app._update_job_ui(job)
+
+    def download_started(self) -> None:
+        self._speed_chart.reset()
+        self._speed_chart.display = True
+
+    def download_finished(self) -> None:
+        self._speed_chart.display = False
+
+    def download_progress(self, progress: float) -> None:
+        # Calculate speed and update chart
+        current_time = time.time()
+        if self._last_time is not None and progress > self._last_progress:
+            elapsed = current_time - self._last_time
+            if elapsed > 0.5:  # Update every 0.5 seconds
+                # Estimate speed based on progress (rough approximation)
+                progress_delta = progress - self._last_progress
+                # Assume ~100MB file for visualization
+                speed_mbps = (progress_delta / 100) * 100 / elapsed
+                self._speed_chart.add_speed(speed_mbps)
+                self._last_progress = progress
+                self._last_time = current_time
+        else:
+            self._last_time = current_time
+            self._last_progress = progress
+
+    def milestone(self, message: str, url: str | None = None) -> None:
+        self._log_panel.log_success(message, url=url)
+
+    def verbose(self, line: str) -> None:
+        # Schedule UI update on next tick
+        async def _log():
+            self._log_panel.log_verbose(line)
+        asyncio.create_task(_log())
+
+    async def confirm_overwrite(self, filename: str) -> bool:
+        return await self._app.push_screen_wait(OverwriteConfirmScreen(filename))
+
+    async def prompt_upload(self, filename: str) -> bool:
+        return await self._app.push_screen_wait(UploadPromptScreen(filename))
+
+
 class DLVideoApp(App):
     """Main Textual application for video downloading."""
 
@@ -790,47 +846,16 @@ class DLVideoApp(App):
         self._config_manager = ConfigManager()
         self._config = self._config_manager.load()
         self._history_manager = HistoryManager()
-        self._slugifier = Slugifier()
         self._last_output_path: Path | None = None
         self._last_upload_url: str | None = None
         
         # Initialize ContainerService with config settings
-        self._container_service = self._create_container_service()
+        self._container_service = create_container_service(self._config)
         
         # Track jobs and their workers
         self._jobs: dict[str, Job] = {}
         self._job_workers: dict[str, Worker] = {}
-        self._job_services: dict[str, dict] = {}  # Services per job for cancellation
-
-    def _create_container_service(self) -> ContainerService:
-        """Create ContainerService with config settings and environment override.
-        
-        The DL_VIDEO_BACKEND environment variable can override the config setting.
-        Valid values: "local", "container"
-        
-        Returns:
-            Configured ContainerService instance
-        """
-        # Check for environment variable override
-        env_backend = os.environ.get("DL_VIDEO_BACKEND")
-        
-        if env_backend:
-            # Environment variable takes precedence
-            if env_backend.lower() == "container":
-                backend_type = BackendType.CONTAINER
-            else:
-                backend_type = BackendType.LOCAL
-        else:
-            # Use config setting
-            if self._config.execution_backend == "container":
-                backend_type = BackendType.CONTAINER
-            else:
-                backend_type = BackendType.LOCAL
-        
-        return ContainerService(
-            backend_type=backend_type,
-            container_image=self._config.container_image,
-        )
+        self._job_services: dict[str, JobServices] = {}  # Services per job for cancellation
 
     def compose(self) -> ComposeResult:
         yield Header()
@@ -1006,12 +1031,9 @@ class DLVideoApp(App):
                 worker.cancel()
         
         # Cancel services
-        if job_id in self._job_services:
-            services = self._job_services[job_id]
-            for service in services.values():
-                if hasattr(service, 'cancel'):
-                    service.cancel()
-            del self._job_services[job_id]
+        services = self._job_services.pop(job_id, None)
+        if services is not None:
+            services.cancel()
         
         # Update job state and remove from UI
         job.state = OperationState.CANCELLED
@@ -1187,16 +1209,7 @@ class DLVideoApp(App):
         self._jobs[job.id] = job
         
         # Create services for this job with ContainerService
-        self._job_services[job.id] = {
-            'downloader': VideoDownloader(
-                cookies_browser=self._config.cookies_browser,
-                container_service=self._container_service,
-            ),
-            'converter': VideoConverter(
-                container_service=self._container_service,
-            ),
-            'uploader': FileUploader(proxy=self._config.upload_proxy),
-        }
+        self._job_services[job.id] = create_job_services(self._config, self._container_service)
         
         # Add to UI
         jobs_panel = self.query_one(JobsPanel)
@@ -1223,249 +1236,42 @@ class DLVideoApp(App):
         jobs_panel = self.query_one(JobsPanel)
         jobs_panel.update_job(job)
 
-    async def _job_workflow(self, job_id: str) -> OperationResult:
+    async def _job_workflow(self, job_id: str) -> None:
         """Execute the download workflow for a job."""
         job = self._jobs[job_id]
         services = self._job_services[job_id]
-        downloader = services['downloader']
-        converter = services['converter']
-        uploader = services['uploader']
-        
         log_panel = self.query_one(LogHistoryPanel)
-        output_path: Path | None = None
-        upload_url: str | None = None
-        temp_files: list[Path] = []
+        hooks = _AppJobHooks(self, log_panel, self.query_one("#speed-chart", SpeedChart))
 
         try:
-            # Phase 1: Fetch metadata
-            job.state = OperationState.FETCHING_METADATA
-            job.status_message = "Fetching info..."
-            self._update_job_ui(job)
-            
-            metadata = await downloader.get_metadata(job.url)
-            job.title = metadata.title
-            log_panel.log_success(f"Found: {metadata.title}")
-            self._update_job_ui(job)
-            
-            # Determine filename
-            if job.custom_filename:
-                filename = self._slugifier.slugify(job.custom_filename)
-            else:
-                filename = self._slugifier.slugify(metadata.title)
-            
-            # Generate unique hash from URL (first 8 chars of MD5 for readability)
-            import hashlib
-            url_hash = hashlib.md5(job.url.encode()).hexdigest()[:8]
-            
-            # Prepare output path
-            output_dir = self._config.download_dir
-            output_dir.mkdir(parents=True, exist_ok=True)
-            output_path = output_dir / f"{filename}_{url_hash}.mp4"
-            
-            # Check for existing file
-            if output_path.exists():
-                should_overwrite = await self._confirm_overwrite(output_path.name)
-                if not should_overwrite:
-                    job.state = OperationState.CANCELLED
-                    job.status_message = "Skipped (file exists)"
-                    self._update_job_ui(job)
-                    return OperationResult(success=False, error_message="Cancelled by user")
-            
-            # Phase 2: Download
-            job.state = OperationState.DOWNLOADING
-            job.progress = 0
-            self._update_job_ui(job)
-            
-            # Show and reset speed chart
-            speed_chart = self.query_one("#speed-chart", SpeedChart)
-            speed_chart.reset()
-            speed_chart.display = True
-            
-            last_progress = 0.0
-            last_time = None
-            import time
-            
-            def download_progress(progress: float) -> None:
-                nonlocal last_progress, last_time
-                job.progress = progress
-                self._update_job_ui(job)
-                
-                # Calculate speed and update chart
-                current_time = time.time()
-                if last_time is not None and progress > last_progress:
-                    elapsed = current_time - last_time
-                    if elapsed > 0.5:  # Update every 0.5 seconds
-                        # Estimate speed based on progress (rough approximation)
-                        progress_delta = progress - last_progress
-                        # Assume ~100MB file for visualization
-                        speed_mbps = (progress_delta / 100) * 100 / elapsed
-                        speed_chart.add_speed(speed_mbps)
-                        last_progress = progress
-                        last_time = current_time
-                else:
-                    last_time = current_time
-                    last_progress = progress
-            
-            def verbose_output(line: str) -> None:
-                # Schedule UI update on next tick
-                async def _log():
-                    log_panel.log_verbose(line)
-                asyncio.create_task(_log())
-            
-            downloaded_path = await downloader.download(
-                job.url, output_path, download_progress, verbose_output
+            record = await run_job(
+                job, services, self._config.download_dir, self._history_manager, hooks
             )
-            temp_files.append(downloaded_path)
-            log_panel.log_success(f"Downloaded: {downloaded_path.name}")
-            
-            # Hide speed chart after download
-            speed_chart.display = False
-            
-            # Phase 3: Convert (if enabled)
-            # Always run ffmpeg for iMessage compatibility, even if already mp4
-            if job.include_conversion:
-                job.state = OperationState.CONVERTING
-                job.progress = 0
-                self._update_job_ui(job)
-                
-                # Use temp path if file is already .mp4 to avoid overwriting during conversion
-                if downloaded_path.suffix.lower() == ".mp4":
-                    converted_path = downloaded_path.with_suffix(".temp.mp4")
-                else:
-                    converted_path = downloaded_path.with_suffix(".mp4")
-                
-                def convert_progress(progress: float) -> None:
-                    job.progress = progress
-                    self._update_job_ui(job)
-                
-                converted_path = await converter.convert(
-                    downloaded_path, converted_path, convert_progress, verbose_output
+            if record:
+                jobs_panel = self.query_one(JobsPanel)
+                jobs_panel.remove_job(job_id)
+
+                log_panel.log_success(f"Completed: {record.filename}")
+                self.bell()
+                self.notify(f"Downloaded: {record.filename}", title="Complete", severity="information")
+
+                self._last_output_path = Path(record.file_path)
+                if record.upload_url:
+                    self.copy_to_clipboard(record.upload_url)
+                    self._last_upload_url = record.upload_url
+
+                log_panel.add_entry(
+                    filename=record.filename,
+                    file_path=Path(record.file_path),
+                    source_url=record.source_url,
+                    upload_url=record.upload_url,
+                    file_size=record.file_size,
+                    metadata=record.metadata,
                 )
-                temp_files.append(converted_path)
-                log_panel.log_success(f"Converted: {converted_path.name}")
-                
-                # Remove original file only if conversion output is different
-                if converted_path != downloaded_path:
-                    try:
-                        downloaded_path.unlink()
-                        temp_files.remove(downloaded_path)
-                    except Exception:
-                        pass
-                
-                output_path = converted_path
-            else:
-                output_path = downloaded_path
-            
-            # Get file size
-            file_size = output_path.stat().st_size if output_path.exists() else None
-            
-            # Phase 4: Upload
-            should_upload = job.include_upload
-            if not should_upload:
-                should_upload = await self._prompt_upload(output_path.name)
-            
-            if should_upload:
-                job.state = OperationState.UPLOADING
-                job.progress = 0
-                self._update_job_ui(job)
-                
-                def upload_progress(progress: float) -> None:
-                    job.progress = progress
-                    self._update_job_ui(job)
-                
-                upload_url = await uploader.upload(output_path, upload_progress, log_panel.log_verbose)
-                log_panel.log_success(f"Uploaded: {upload_url}", url=upload_url)
-                self.copy_to_clipboard(upload_url)
-                self._last_upload_url = upload_url
-            
-            # Success!
-            job.state = OperationState.COMPLETED
-            job.progress = 100
-            job.output_path = output_path
-            job.upload_url = upload_url
-            job.file_size = file_size
-            
-            # Remove from jobs panel
-            jobs_panel = self.query_one(JobsPanel)
-            jobs_panel.remove_job(job_id)
-            
-            log_panel.log_success(f"Completed: {output_path.name}")
-            self.bell()
-            self.notify(f"Downloaded: {output_path.name}", title="Complete", severity="information")
-            
-            self._last_output_path = output_path
-            
-            # Add to history UI
-            # Convert VideoMetadata to MetadataRecord for storage
-            metadata_record = MetadataRecord(
-                title=metadata.title,
-                duration=metadata.duration,
-                uploader=metadata.uploader,
-                uploader_id=metadata.uploader_id,
-                channel=metadata.channel,
-                view_count=metadata.view_count,
-                like_count=metadata.like_count,
-                comment_count=metadata.comment_count,
-                upload_date=metadata.upload_date,
-                description=metadata.description,
-                tags=metadata.tags,
-                categories=metadata.categories,
-                resolution=metadata.resolution,
-                fps=metadata.fps,
-                vcodec=metadata.vcodec,
-                acodec=metadata.acodec,
-                thumbnail_url=metadata.thumbnail_url,
-                extractor=metadata.extractor,
-            )
-            
-            log_panel.add_entry(
-                filename=output_path.name,
-                file_path=output_path,
-                source_url=job.url,
-                upload_url=upload_url,
-                file_size=file_size,
-                metadata=metadata_record,
-            )
-            
-            # Persist to history file
-            self._history_manager.add(HistoryRecord.create(
-                filename=output_path.name,
-                source_url=job.url,
-                file_path=output_path,
-                file_size=file_size,
-                upload_url=upload_url,
-                metadata=metadata_record,
-            ))
-            
-            temp_files.clear()
-            return OperationResult(success=True, output_path=output_path, upload_url=upload_url, file_size=file_size)
-
-        except (DownloadError, ConversionError, UploadError) as e:
-            job.state = OperationState.ERROR
-            job.error_message = str(e)
-            self._update_job_ui(job)
-            log_panel.log_error(str(e))
-            self.bell()
-            self.notify(str(e), title="Error", severity="error")
-            for f in temp_files:
-                try:
-                    f.unlink()
-                except Exception:
-                    pass
-            return OperationResult(success=False, error_message=str(e))
-
-        except Exception as e:
-            job.state = OperationState.ERROR
-            job.error_message = str(e)
-            self._update_job_ui(job)
-            log_panel.log_error(f"Unexpected error: {e}")
-            self.bell()
-            for f in temp_files:
-                try:
-                    f.unlink()
-                except Exception:
-                    pass
-            return OperationResult(success=False, error_message=str(e))
+            elif job.state == OperationState.ERROR:
+                log_panel.log_error(job.error_message)
+                self.bell()
+                self.notify(job.error_message, title="Error", severity="error")
 
         finally:
             # Cleanup services
@@ -1473,9 +1279,3 @@ class DLVideoApp(App):
                 del self._job_services[job_id]
             if job_id in self._job_workers:
                 del self._job_workers[job_id]
-
-    async def _confirm_overwrite(self, filename: str) -> bool:
-        return await self.push_screen_wait(OverwriteConfirmScreen(filename))
-
-    async def _prompt_upload(self, filename: str) -> bool:
-        return await self.push_screen_wait(UploadPromptScreen(filename))

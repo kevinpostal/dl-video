@@ -196,6 +196,7 @@ name = "dl-video"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [
+    { name = "aiohttp" },
     { name = "httpx", extra = ["socks"] },
     { name = "pillow" },
     { name = "pyperclip" },
@@ -220,6 +221,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
+    { name = "aiohttp", specifier = ">=3.9" },
     { name = "httpx", extras = ["socks"], specifier = ">=0.27.0" },
     { name = "hypothesis", marker = "extra == 'dev'", specifier = ">=6.100.0" },
     { name = "pillow", specifier = ">=10.0.0" },

@@ -1,0 +1,130 @@
+name: DLVideo
+options:
+  bundleIdPrefix: com.kevinpostal
+  deploymentTarget: { iOS: "17.0" }
+settings:
+  base:
+    DEVELOPMENT_TEAM: YEJTMUK9M4
+    CODE_SIGN_STYLE: Automatic
+    SWIFT_VERSION: "5.0"
+    MARKETING_VERSION: "0.1.0"
+    CURRENT_PROJECT_VERSION: "1"
+targets:
+  DLVideo:
+    type: application
+    platform: iOS
+    sources: [DLVideo, Shared, Intents]
+    settings: { base: { PRODUCT_BUNDLE_IDENTIFIER: com.kevinpostal.dlvideo, INFOPLIST_FILE: DLVideo/Info.plist, ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon } }
+    info:
+      path: DLVideo/Info.plist
+      properties:
+        CFBundleDisplayName: dl-video
+        UILaunchScreen: {}
+        NSPhotoLibraryAddUsageDescription: Save downloaded videos to your photo library.
+        UIFileSharingEnabled: true
+        LSSupportsOpeningDocumentsInPlace: true
+        NSAppTransportSecurity: { NSAllowsLocalNetworking: true }
+        UIApplicationShortcutItems:
+          - UIApplicationShortcutItemType: com.kevinpostal.dlvideo.download-copied-link
+            UIApplicationShortcutItemTitle: Download Copied Link
+            UIApplicationShortcutItemSubtitle: Send the clipboard link to your Mac
+            UIApplicationShortcutItemIconSymbolName: doc.on.clipboard
+          - UIApplicationShortcutItemType: com.kevinpostal.dlvideo.history
+            UIApplicationShortcutItemTitle: History
+            UIApplicationShortcutItemIconSymbolName: clock
+    entitlements:
+      path: DLVideo/DLVideo.entitlements
+      properties: { com.apple.security.application-groups: [group.com.kevinpostal.dlvideo] }
+    dependencies: [{ target: DLVideoShare }, { target: DLVideoAction }, { target: DLVideoWidgets }]
+  # Share extension: dl-video in the share sheet's app row.
+  DLVideoShare:
+    type: app-extension
+    platform: iOS
+    sources: [Extension, Shared]
+    settings: { base: { PRODUCT_BUNDLE_IDENTIFIER: com.kevinpostal.dlvideo.share, INFOPLIST_FILE: DLVideoShare/Info.plist } }
+    info:
+      path: DLVideoShare/Info.plist
+      properties:
+        CFBundleDisplayName: dl-video
+        NSAppTransportSecurity: { NSAllowsLocalNetworking: true }
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.share-services
+          NSExtensionPrincipalClass: $(PRODUCT_MODULE_NAME).ShareViewController
+          # Explicit predicate instead of the count dictionary: hosts mix types
+          # (Messages pairs a link-preview file with the link), and the
+          # dictionary form silently hides the extension for such shares.
+          NSExtensionAttributes: &activation
+            NSExtensionActivationRule: >-
+              SUBQUERY(extensionItems, $item, SUBQUERY($item.attachments, $att,
+              ANY $att.registeredTypeIdentifiers UTI-CONFORMS-TO "public.url"
+              OR ANY $att.registeredTypeIdentifiers UTI-CONFORMS-TO "public.plain-text"
+              OR ANY $att.registeredTypeIdentifiers UTI-CONFORMS-TO "public.audiovisual-content"
+              OR ANY $att.registeredTypeIdentifiers UTI-CONFORMS-TO "com.apple.linkpresentation.metadata"
+              ).@count >= 1).@count >= 1
+    entitlements:
+      path: DLVideoShare/DLVideoShare.entitlements
+      properties: { com.apple.security.application-groups: [group.com.kevinpostal.dlvideo] }
+  # Action extension: "Download with dl-video" in the share sheet's action list.
+  DLVideoAction:
+    type: app-extension
+    platform: iOS
+    sources: [Extension, Shared, DLVideoAction]
+    settings: { base: { PRODUCT_BUNDLE_IDENTIFIER: com.kevinpostal.dlvideo.action, INFOPLIST_FILE: DLVideoAction/Info.plist, ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon } }
+    info:
+      path: DLVideoAction/Info.plist
+      properties:
+        CFBundleDisplayName: Download with dl-video
+        NSAppTransportSecurity: { NSAllowsLocalNetworking: true }
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.ui-services
+          NSExtensionPrincipalClass: $(PRODUCT_MODULE_NAME).ShareViewController
+          NSExtensionAttributes: *activation
+    entitlements:
+      path: DLVideoAction/DLVideoAction.entitlements
+      properties: { com.apple.security.application-groups: [group.com.kevinpostal.dlvideo] }
+
+  DLVideoWidgets:
+    type: app-extension
+    platform: iOS
+    deploymentTarget: "18.0"   # ControlWidget; the app itself still runs on 17
+    sources: [DLVideoWidgets, Shared, Intents]
+    settings: { base: { PRODUCT_BUNDLE_IDENTIFIER: com.kevinpostal.dlvideo.widgets, INFOPLIST_FILE: DLVideoWidgets/Info.plist } }
+    info:
+      path: DLVideoWidgets/Info.plist
+      properties:
+        CFBundleDisplayName: dl-video
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.widgetkit-extension
+    entitlements:
+      path: DLVideoWidgets/DLVideoWidgets.entitlements
+      properties: { com.apple.security.application-groups: [group.com.kevinpostal.dlvideo] }
+  # Test-only: shares links through the system share sheet for the e2e suite.
+  DLVideoE2EHost:
+    type: application
+    platform: iOS
+    sources: [E2E/Host, Shared/ServerSettings.swift]
+    settings: { base: { PRODUCT_BUNDLE_IDENTIFIER: com.kevinpostal.dlvideo.e2ehost, INFOPLIST_FILE: E2E/Host/Info.plist } }
+    info:
+      path: E2E/Host/Info.plist
+      properties:
+        CFBundleDisplayName: dl-video E2E
+        UILaunchScreen: {}
+    entitlements:
+      path: E2E/Host/E2EHost.entitlements
+      properties: { com.apple.security.application-groups: [group.com.kevinpostal.dlvideo] }
+  DLVideoE2ETests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources: [E2E/Tests]
+    settings: { base: { PRODUCT_BUNDLE_IDENTIFIER: com.kevinpostal.dlvideo.e2etests, GENERATE_INFOPLIST_FILE: YES, TEST_TARGET_NAME: DLVideoE2EHost } }
+    dependencies: [{ target: DLVideoE2EHost }]
+
+schemes:
+  DLVideo:
+    build:
+      targets: { DLVideo: all }
+  DLVideoE2E:
+    build:
+      targets: { DLVideo: all, DLVideoE2EHost: all, DLVideoE2ETests: [test] }
+    test:
+      targets: [DLVideoE2ETests]

@@ -280,7 +280,7 @@ class TestFileUploader:
     @pytest.fixture
     def uploader(self):
         """Create a FileUploader instance."""
-        return FileUploader()
+        return FileUploader(token="t")
 
     @pytest.mark.asyncio
     async def test_upload_success(self, uploader, tmp_path):
@@ -294,8 +294,8 @@ class TestFileUploader:
             progress_values.append(progress)
 
         mock_response = MagicMock()
-        mock_response.status_code = 200
-        mock_response.text = "https://jonesfilesandfootmassage.com/u/abc123.mp4"
+        mock_response.status_code = 201
+        mock_response.json.return_value = {"url": "https://files.brokejokes.com/f/abc123.mp4"}
 
         with patch("httpx.AsyncClient") as mock_client_class:
             mock_client = AsyncMock()
@@ -306,9 +306,21 @@ class TestFileUploader:
 
             url = await uploader.upload(file_path, progress_callback)
 
-        assert url == "https://jonesfilesandfootmassage.com/u/abc123.mp4"
+        assert url == "https://files.brokejokes.com/f/abc123.mp4"
+        assert mock_client.post.call_args.kwargs["headers"] == {"Authorization": "Bearer t"}
         assert len(progress_values) > 0
         assert progress_values[-1] == 100.0
+
+    @pytest.mark.asyncio
+    async def test_upload_without_token_fails_before_network(self, tmp_path, monkeypatch):
+        monkeypatch.delenv(FileUploader.TOKEN_ENV_VAR, raising=False)
+        file_path = tmp_path / "video.mp4"
+        file_path.write_bytes(b"x")
+
+        with patch("httpx.AsyncClient") as mock_client_class:
+            with pytest.raises(UploadError, match="No upload token"):
+                await FileUploader().upload(file_path)
+            mock_client_class.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_upload_file_not_found(self, uploader, tmp_path):
@@ -397,7 +409,7 @@ class TestFileUploader:
             mock_client_class.return_value = mock_client
 
             with pytest.raises(UploadError) as exc_info:
-                await FileUploader().upload(file_path)
+                await FileUploader(token="t").upload(file_path)
 
         message = str(exc_info.value)
         assert "TLS handshake" in message
@@ -427,7 +439,7 @@ class TestFileUploader:
             mock_client_class.return_value = mock_client
 
             with pytest.raises(UploadError) as exc_info:
-                await FileUploader().upload(file_path)
+                await FileUploader(token="t").upload(file_path)
 
         message = str(exc_info.value)
         assert FileUploader.PROXY_ENV_VAR not in message

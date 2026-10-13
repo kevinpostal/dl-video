@@ -1,4 +1,4 @@
-.PHONY: help run serve funnel funnel-stop test clean install dev container-pull container-check container-test run-container
+.PHONY: help run serve funnel funnel-stop serve-api serve-api-tailnet serve-api-stop serve-api-install serve-api-uninstall test ios-e2e clean install dev container-pull container-check container-test run-container
 
 .DEFAULT_GOAL := help
 
@@ -28,6 +28,11 @@ help:
 	@echo "  serve            Serve via web browser (http://0.0.0.0:8000)"
 	@echo "  funnel           Start server with Tailscale Funnel (public URL)"
 	@echo "  funnel-stop      Stop Tailscale Funnel"
+	@echo "  serve-api        Run the iOS API server (http://127.0.0.1:8765)"
+	@echo "  serve-api-tailnet Run the API server behind Tailscale HTTPS :8443"
+	@echo "  serve-api-stop   Stop the API server and its Tailscale serve"
+	@echo "  serve-api-install Run the API server at login (launchd) behind Tailscale :8443"
+	@echo "  serve-api-uninstall Remove the launchd agent"
 	@echo ""
 	@echo "  install          Install dependencies (auto-installs uv if needed)"
 	@echo "  dev              Install with dev dependencies"
@@ -75,6 +80,39 @@ funnel-stop:
 	@lsof -ti:8000 | xargs kill -9 2>/dev/null || true
 	@echo "Funnel stopped"
 
+# Run the API server for the iOS app (localhost only)
+serve-api:
+	@$(UV) run dl-video-server
+
+# Expose the API server on the tailnet over HTTPS :8443, then run it
+serve-api-tailnet:
+	@$(TAILSCALE) serve --bg --https=8443 http://127.0.0.1:8765
+	@$(UV) run dl-video-server
+
+# Stop the API server and remove its Tailscale serve config
+serve-api-stop: serve-api-uninstall
+	@$(TAILSCALE) serve --https=8443 off 2>/dev/null || true
+	@lsof -ti:8765 | xargs kill 2>/dev/null || true
+
+LAUNCHD_LABEL := com.kevinpostal.dl-video-server
+LAUNCHD_PLIST := $(HOME)/Library/LaunchAgents/$(LAUNCHD_LABEL).plist
+
+# Keep the API server running across logins/crashes; the tailscale serve
+# config set with --bg persists on its own.
+serve-api-install:
+	@$(UV) sync --inexact --quiet
+	@lsof -ti:8765 | xargs kill 2>/dev/null || true
+	@mkdir -p $(dir $(LAUNCHD_PLIST))
+	@sed -e 's|@VENV@|$(UV_PROJECT_ENVIRONMENT)|g' -e 's|@HOME@|$(HOME)|g' scripts/dl-video-server.plist.in > $(LAUNCHD_PLIST)
+	@launchctl bootout gui/$$(id -u)/$(LAUNCHD_LABEL) 2>/dev/null || true
+	@launchctl bootstrap gui/$$(id -u) $(LAUNCHD_PLIST)
+	@$(TAILSCALE) serve --bg --https=8443 http://127.0.0.1:8765
+	@echo "Installed; logs in ~/Library/Logs/dl-video-server.log"
+
+serve-api-uninstall:
+	@launchctl bootout gui/$$(id -u)/$(LAUNCHD_LABEL) 2>/dev/null || true
+	@rm -f $(LAUNCHD_PLIST)
+
 # Install dependencies (installs uv if missing)
 install:
 	@. $$HOME/.local/bin/env 2>/dev/null || true; \
@@ -99,6 +137,30 @@ dev:
 # Run tests
 test:
 	@$(UV) run pytest
+
+# iOS end-to-end tests: real share sheet / quick action in the Simulator → the
+# running API server (make serve-api-install) → yt-dlp/ffmpeg. Server upload is
+# switched off while it runs. Uses its own simulator so other projects' UI tests
+# (which shut down / reset shared devices) can't interfere.
+XCODE_DEV := /Applications/Xcode.app/Contents/Developer
+IOS_SIM ?= dl-video E2E
+IOS_SIM_TYPE ?= iPhone 17 Pro
+IOS_DERIVED := /tmp/dlvideo-build
+ios-e2e:
+	@DEVELOPER_DIR=$(XCODE_DEV) xcrun simctl list devices available | grep -q "$(IOS_SIM) (" \
+		|| DEVELOPER_DIR=$(XCODE_DEV) xcrun simctl create "$(IOS_SIM)" "$(IOS_SIM_TYPE)" >/dev/null
+	@DEVELOPER_DIR=$(XCODE_DEV) xcrun simctl boot "$(IOS_SIM)" 2>/dev/null || true
+	@cd ios && DEVELOPER_DIR=$(XCODE_DEV) /opt/homebrew/bin/xcodegen generate --quiet
+	@cd ios && DEVELOPER_DIR=$(XCODE_DEV) xcodebuild -project DLVideo.xcodeproj -scheme DLVideoE2E \
+		-destination 'platform=iOS Simulator,name=$(IOS_SIM)' -derivedDataPath $(IOS_DERIVED) \
+		-allowProvisioningUpdates -quiet build-for-testing
+	@DEVELOPER_DIR=$(XCODE_DEV) xcrun simctl install "$(IOS_SIM)" $(IOS_DERIVED)/Build/Products/Debug-iphonesimulator/DLVideo.app
+	@cd ios && DEVELOPER_DIR=$(XCODE_DEV) \
+		TEST_RUNNER_DLV_SERVER_URL=http://127.0.0.1:8765 \
+		TEST_RUNNER_DLV_TOKEN=$$(cat $(HOME)/.config/dl-video/server_token) \
+		xcodebuild -project DLVideo.xcodeproj -scheme DLVideoE2E \
+		-destination 'platform=iOS Simulator,name=$(IOS_SIM)' -derivedDataPath $(IOS_DERIVED) \
+		$(if $(E2E_ONLY),-only-testing:DLVideoE2ETests/ShareE2ETests/$(E2E_ONLY)) test-without-building
 
 # Run tests with coverage
 test-cov:

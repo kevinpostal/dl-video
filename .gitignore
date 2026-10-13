@@ -210,3 +210,5 @@ __marimo__/
 debug.log
 snapshot_report.html
 .DS_Store
+ios/DLVideo.xcodeproj/
+ios/build/

@@ -145,7 +145,12 @@ class HistoryManager:
             json.dump(data, f, indent=2)
 
     def add(self, record: HistoryRecord) -> None:
-        """Add a record to history."""
+        """Add a record to history.
+
+        Reloads first so concurrent writers (TUI and API server) don't drop
+        each other's entries.
+        """
+        self._load()
         self._records.insert(0, record)
         self._save()
 

@@ -1,0 +1,24 @@
+# files.brokejokes.com — deployed to /opt/bj-files on the OVH host (`make deploy`).
+# Public traffic arrives through the dedicated `bj-files` Cloudflare tunnel; its
+# connector runs below and reaches the app over the private compose network.
+# No ports are published. .env holds UPLOAD_TOKEN and TUNNEL_TOKEN.
+services:
+  bj-files:
+    build: .
+    image: bj-files:latest
+    container_name: bj-files
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      PUBLIC_URL: https://files.brokejokes.com
+      DATA_DIR: /data
+    volumes:
+      - ./data:/data
+
+  tunnel:
+    image: cloudflare/cloudflared:latest
+    container_name: bj-files-tunnel
+    restart: unless-stopped
+    command: tunnel --no-autoupdate run
+    env_file: .env
+    depends_on: [bj-files]
