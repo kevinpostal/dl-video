@@ -15,6 +15,7 @@ downloads/
 eggs/
 .eggs/
 lib/
+!brokejokes-files/lib/
 lib64/
 parts/
 sdist/
