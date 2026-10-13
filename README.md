@@ -12,7 +12,7 @@ Paste a URL, hit enter, get a video file. That's the basic idea.
 - Converts to MP4 automatically (if you want)
 - Can upload to `files.brokejokes.com` (self-hosted, `brokejokes-files/`) and copy the link
 - Shows thumbnails and metadata
-- Works in the browser too (via Tailscale Funnel)
+- Works in the browser too (on your tailnet, `make serve-tailnet`)
 
 ## Quick start
 
@@ -46,9 +46,9 @@ make run
 ## Usage
 
 ```bash
-make run          # Terminal UI
-make serve        # Web interface (local)
-make funnel       # Web interface (public via Tailscale)
+make run            # Terminal UI
+make serve          # Web interface (http://127.0.0.1:8000, no auth)
+make serve-tailnet  # Web interface on your tailnet only (https://<mac>.ts.net)
 ```
 
 ### Using container backend

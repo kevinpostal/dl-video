@@ -50,6 +50,18 @@ defmodule BjFiles.RouterTest do
     assert got.resp_body == "hello video"
     assert get_resp_header(got, "content-type") == ["video/mp4"]
     assert get_resp_header(got, "accept-ranges") == ["bytes"]
+    assert get_resp_header(got, "x-content-type-options") == ["nosniff"]
+    assert [csp] = get_resp_header(got, "content-security-policy")
+    assert csp =~ "default-src 'none'"
+    refute csp =~ "sandbox"
+  end
+
+  test "non-media uploads are refused and never stored" do
+    for name <- ["evil.html", "evil.svg", "noext"] do
+      assert upload("<script>alert(1)</script>", name).status == 415
+    end
+
+    assert File.ls!(BjFiles.Store.dir()) == []
   end
 
   test "range requests return partial content" do

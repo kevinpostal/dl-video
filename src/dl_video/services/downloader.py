@@ -49,8 +49,8 @@ class VideoDownloader:
 
         attempts = []
         if self._cookies_browser:
-            attempts.append(base_cmd + ["--cookies-from-browser", self._cookies_browser, url])
-        attempts.append(base_cmd + [url])
+            attempts.append(base_cmd + ["--cookies-from-browser", self._cookies_browser, "--", url])
+        attempts.append(base_cmd + ["--", url])
 
         last_error = None
         for cmd in attempts:
@@ -136,9 +136,9 @@ class VideoDownloader:
         base_args = [
             "--newline", "--no-warnings",
             "-f", "bestvideo*+bestaudio/best",
-            "-o", template, url,
+            "-o", template, "--", url,
         ]
-        plain_args = ["--newline", "-o", template, url]
+        plain_args = ["--newline", "-o", template, "--", url]
 
         attempts = []
         if self._cookies_browser:
@@ -239,17 +239,17 @@ class VideoDownloader:
                 "yt-dlp", "--cookies-from-browser", self._cookies_browser,
                 "--newline", "--no-warnings", "--js-runtimes", "node",
                 "-f", "bestvideo*+bestaudio/best",
-                "-o", template, url,
+                "-o", template, "--", url,
             ], "with cookies"))
 
         attempts.append(([
             "yt-dlp", "--newline", "--no-warnings", "--js-runtimes", "node",
             "-f", "bestvideo*+bestaudio/best",
-            "-o", template, url,
+            "-o", template, "--", url,
         ], "without cookies"))
 
         attempts.append(([
-            "yt-dlp", "--newline", "-o", template, url,
+            "yt-dlp", "--newline", "-o", template, "--", url,
         ], "default settings"))
 
         last_error = None

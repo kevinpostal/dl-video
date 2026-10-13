@@ -18,10 +18,13 @@ for p in extra_paths:
         env_path = f"{p}:{env_path}"
 os.environ["PATH"] = env_path
 
-# Use uv run to ensure correct environment
+# Use uv run to ensure correct environment.
+# The web TUI has no authentication: keep it on loopback (tailnet via `make serve-tailnet`).
+# Behind a proxy, DL_VIDEO_SERVE_PUBLIC_URL is the URL browsers load assets/websocket from.
 server = Server(
     "uv run python -m dl_video",
-    host="0.0.0.0",
+    host=os.environ.get("DL_VIDEO_SERVE_HOST", "127.0.0.1"),
     port=8000,
+    public_url=os.environ.get("DL_VIDEO_SERVE_PUBLIC_URL") or None,
 )
 server.serve()

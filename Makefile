@@ -1,4 +1,4 @@
-.PHONY: help run serve funnel funnel-stop serve-api serve-api-tailnet serve-api-stop serve-api-install serve-api-uninstall test ios-e2e clean install dev container-pull container-check container-test run-container
+.PHONY: help run serve serve-tailnet serve-tailnet-stop serve-api serve-api-tailnet serve-api-stop serve-api-install serve-api-uninstall test ios-e2e clean install dev container-pull container-check container-test run-container
 
 .DEFAULT_GOAL := help
 
@@ -25,9 +25,9 @@ help:
 	@echo "Targets:"
 	@echo "  run              Run the app in terminal"
 	@echo "  run-container    Run the app with container backend"
-	@echo "  serve            Serve via web browser (http://0.0.0.0:8000)"
-	@echo "  funnel           Start server with Tailscale Funnel (public URL)"
-	@echo "  funnel-stop      Stop Tailscale Funnel"
+	@echo "  serve            Serve via web browser (http://127.0.0.1:8000)"
+	@echo "  serve-tailnet    Serve the web TUI on the tailnet only (https://<mac>.ts.net)"
+	@echo "  serve-tailnet-stop Stop the tailnet web TUI and its Tailscale serve"
 	@echo "  serve-api        Run the iOS API server (http://127.0.0.1:8765)"
 	@echo "  serve-api-tailnet Run the API server behind Tailscale HTTPS :8443"
 	@echo "  serve-api-stop   Stop the API server and its Tailscale serve"
@@ -59,26 +59,22 @@ run:
 run-container:
 	@DL_VIDEO_BACKEND=container $(UV) run python -m dl_video
 
-# Serve via web browser (local network)
+# Serve via web browser (loopback only; the web TUI has no authentication)
 serve:
 	@lsof -ti:8000 | xargs kill -9 2>/dev/null || true
 	@$(UV) run python serve.py
 
-# Start Tailscale Funnel and serve
-funnel:
+# Expose the web TUI on the tailnet (never public) over HTTPS :443, then run it
+serve-tailnet:
+	@$(TAILSCALE) serve --bg --https=443 http://127.0.0.1:8000
 	@lsof -ti:8000 | xargs kill -9 2>/dev/null || true
-	@$(TAILSCALE) funnel reset 2>/dev/null || true
-	@$(TAILSCALE) funnel --bg 8000
-	@echo ""
-	@echo "Funnel started! Starting server..."
-	@echo ""
-	@$(UV) run python serve.py
+	@export DL_VIDEO_SERVE_PUBLIC_URL=https://$$($(TAILSCALE) status --json | python3 -c 'import json,sys; print(json.load(sys.stdin)["Self"]["DNSName"].rstrip("."))'); \
+		$(UV) run python serve.py
 
-# Stop Tailscale Funnel
-funnel-stop:
-	@$(TAILSCALE) funnel reset 2>/dev/null || true
+# Stop the tailnet web TUI and remove its Tailscale serve config
+serve-tailnet-stop:
+	@$(TAILSCALE) serve --https=443 off 2>/dev/null || true
 	@lsof -ti:8000 | xargs kill -9 2>/dev/null || true
-	@echo "Funnel stopped"
 
 # Run the API server for the iOS app (localhost only)
 serve-api:
@@ -105,6 +101,8 @@ serve-api-install:
 	@mkdir -p $(dir $(LAUNCHD_PLIST))
 	@sed -e 's|@VENV@|$(UV_PROJECT_ENVIRONMENT)|g' -e 's|@HOME@|$(HOME)|g' scripts/dl-video-server.plist.in > $(LAUNCHD_PLIST)
 	@launchctl bootout gui/$$(id -u)/$(LAUNCHD_LABEL) 2>/dev/null || true
+	@chmod 600 $(HOME)/Library/Logs/dl-video-server.log 2>/dev/null || true
+	@chmod 600 $(HOME)/.config/dl-video/*.json 2>/dev/null || true
 	@launchctl bootstrap gui/$$(id -u) $(LAUNCHD_PLIST)
 	@$(TAILSCALE) serve --bg --https=8443 http://127.0.0.1:8765
 	@echo "Installed; logs in ~/Library/Logs/dl-video-server.log"

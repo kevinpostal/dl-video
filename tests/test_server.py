@@ -191,6 +191,15 @@ async def test_upload_rejects_non_media(client: TestClient, harness: Harness):
     assert not dl_dir.exists() or list(dl_dir.iterdir()) == []
 
 
+async def test_upload_rejects_oversized_file(client: TestClient, harness: Harness, monkeypatch):
+    monkeypatch.setattr("dl_video.server.MAX_UPLOAD_BYTES", 10)
+    form = aiohttp.FormData()
+    form.add_field("file", b"x" * 11, filename="a.mp4")
+    assert (await client.post("/api/uploads", data=form, headers=AUTH)).status == 413
+    dl_dir = harness.config_path.parent / "dl"
+    assert not dl_dir.exists() or list(dl_dir.iterdir()) == []
+
+
 async def test_unknown_job_is_404(client: TestClient):
     assert (await client.get("/api/jobs/nope", headers=AUTH)).status == 404
     assert (await client.post("/api/jobs/nope/cancel", headers=AUTH)).status == 404

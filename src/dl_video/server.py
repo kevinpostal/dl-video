@@ -13,6 +13,7 @@ import json
 import logging
 import re
 import secrets
+import sys
 from collections.abc import Callable
 from pathlib import Path
 from urllib.parse import quote
@@ -233,6 +234,9 @@ def _history_json(record: HistoryRecord, download_dir: Path) -> dict:
     }
 
 
+# Authenticated clients only, but an unbounded stream could still fill the disk.
+MAX_UPLOAD_BYTES = 4 * 1024**3
+
 # What ffmpeg can turn into an MP4. Anything else (a link-preview blob, a PDF)
 # would only fail later with an unhelpful conversion error.
 MEDIA_SUFFIXES = {
@@ -345,8 +349,14 @@ def create_app(
                     download_dir = config_manager.load().download_dir
                     download_dir.mkdir(parents=True, exist_ok=True)
                     incoming = download_dir / f".incoming-{secrets.token_hex(6)}{_safe_suffix(original)}"
+                    written = 0
                     with incoming.open("wb") as out:
                         while chunk := await part.read_chunk(1 << 20):
+                            written += len(chunk)
+                            if written > MAX_UPLOAD_BYTES:
+                                out.close()
+                                incoming.unlink(missing_ok=True)
+                                return _error(413, "file too large (max 4 GB)")
                             out.write(chunk)
                 elif part.name in {"filename", "convert", "upload"}:
                     fields[part.name] = (await part.text()).strip()
@@ -446,7 +456,11 @@ def main() -> None:
     token = load_or_create_token()
     print(f"dl-video API on http://{args.host}:{args.port}")
     # Flush: under make/pipes stdout is block-buffered and run_app never returns.
-    print(f"token: {token}", flush=True)
+    # Only a terminal gets the token itself; under launchd stdout is a log file.
+    if sys.stdout.isatty():
+        print(f"token: {token}", flush=True)
+    else:
+        print(f"token: in {default_token_path()}", flush=True)
     web.run_app(create_app(token, ConfigManager()), host=args.host, port=args.port)
 
 
