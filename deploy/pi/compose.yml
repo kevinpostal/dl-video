@@ -1,0 +1,24 @@
+# dl-video API on an always-on Linux box (Raspberry Pi). Installed by
+# `make pi-deploy`, which rsyncs the sources next to this file and runs
+# `docker compose up -d --build` there.
+#
+# Host networking: the Pi's docker bridge has no egress (its firewall is a
+# gateway/kill-switch setup), and the API must bind loopback only anyway;
+# `tailscale serve --https=8443` fronts it on the tailnet like on the Mac.
+services:
+  api:
+    build:
+      context: .
+      dockerfile: Containerfile
+      network: host
+    image: dl-video:latest
+    container_name: dl-video-api
+    network_mode: host
+    entrypoint: ["uv", "run", "dl-video-server", "--host", "127.0.0.1", "--port", "8765"]
+    volumes:
+      # config.json, history.json, server_token, upload_token, thumbnails
+      - ../config:/root/.config/dl-video
+      - ../downloads:/downloads
+    environment:
+      PYTHONUNBUFFERED: "1"
+    restart: always

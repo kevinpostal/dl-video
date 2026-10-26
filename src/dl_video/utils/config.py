@@ -28,6 +28,7 @@ class ConfigManager:
                 auto_upload=data.get("auto_upload", False),
                 skip_conversion=data.get("skip_conversion", False),
                 cookies_browser=data.get("cookies_browser"),
+                cookies_file=data.get("cookies_file"),
                 # New container settings with migration support for old configs
                 execution_backend=data.get("execution_backend", "local"),
                 container_image=data.get("container_image"),
@@ -45,6 +46,7 @@ class ConfigManager:
             "auto_upload": config.auto_upload,
             "skip_conversion": config.skip_conversion,
             "cookies_browser": config.cookies_browser,
+            "cookies_file": config.cookies_file,
             "execution_backend": config.execution_backend,
             "container_image": config.container_image,
             "upload_proxy": config.upload_proxy,

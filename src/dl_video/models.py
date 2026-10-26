@@ -129,6 +129,7 @@ class Config:
     auto_upload: bool
     skip_conversion: bool
     cookies_browser: str | None = None  # chrome, firefox, safari, edge, brave
+    cookies_file: str | None = None  # Netscape cookies.txt, for hosts without a browser (the Pi)
     execution_backend: str = "local"  # local or container
     container_image: str | None = None  # defaults to linuxserver/ffmpeg
     upload_proxy: str | None = None  # e.g. socks5://host:1080, for networks that filter the upload host

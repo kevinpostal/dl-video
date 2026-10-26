@@ -1,4 +1,4 @@
-.PHONY: help run serve serve-tailnet serve-tailnet-stop serve-api serve-api-tailnet serve-api-stop serve-api-install serve-api-uninstall test ios-e2e clean install dev container-pull container-check container-test run-container
+.PHONY: help run serve serve-tailnet serve-tailnet-stop serve-api serve-api-tailnet serve-api-stop serve-api-install serve-api-uninstall pi-deploy pi-cookies pi-stop pi-logs test ios-e2e clean install dev container-pull container-check container-test run-container
 
 .DEFAULT_GOAL := help
 
@@ -33,6 +33,10 @@ help:
 	@echo "  serve-api-stop   Stop the API server and its Tailscale serve"
 	@echo "  serve-api-install Run the API server at login (launchd) behind Tailscale :8443"
 	@echo "  serve-api-uninstall Remove the launchd agent"
+	@echo "  pi-deploy        Run the API server always-on on a Pi (PI_HOST=$(PI_HOST)) behind Tailscale :8443"
+	@echo "  pi-cookies       Send this Mac's Chrome cookies for video sites to the Pi server"
+	@echo "  pi-logs          Tail the Pi API server logs"
+	@echo "  pi-stop          Stop the Pi API server and its Tailscale serve"
 	@echo ""
 	@echo "  install          Install dependencies (auto-installs uv if needed)"
 	@echo "  dev              Install with dev dependencies"
@@ -110,6 +114,39 @@ serve-api-install:
 serve-api-uninstall:
 	@launchctl bootout gui/$$(id -u)/$(LAUNCHD_LABEL) 2>/dev/null || true
 	@rm -f $(LAUNCHD_PLIST)
+
+# Always-on API server on a Linux box so the phone works while the Mac sleeps.
+# Layout on the host: $(PI_DIR)/src (rsynced sources + compose.yml),
+# $(PI_DIR)/config (tokens, config.json, cookies.txt, history), $(PI_DIR)/downloads.
+PI_HOST ?= pi-gate
+PI_DIR ?= /srv/dl-video
+PI_CONFIG := {"download_dir": "/downloads", "auto_upload": true, "skip_conversion": false, "cookies_file": "/root/.config/dl-video/cookies.txt"}
+
+pi-deploy:
+	@ssh $(PI_HOST) 'sudo mkdir -p $(PI_DIR)/src $(PI_DIR)/config $(PI_DIR)/downloads && sudo chown -R $$USER $(PI_DIR) && chmod 700 $(PI_DIR)/config'
+	@rsync -az --delete src pyproject.toml uv.lock README.md Containerfile deploy/pi/compose.yml $(PI_HOST):$(PI_DIR)/src/
+	@# Same tokens as this Mac, so the phone only has to switch the server URL. Never overwritten.
+	@for f in server_token upload_token; do \
+		ssh $(PI_HOST) "test -s $(PI_DIR)/config/$$f" || scp -q $(HOME)/.config/dl-video/$$f $(PI_HOST):$(PI_DIR)/config/$$f; \
+	done
+	@ssh $(PI_HOST) 'test -s $(PI_DIR)/config/config.json || echo '"'"'$(PI_CONFIG)'"'"' > $(PI_DIR)/config/config.json; chmod 600 $(PI_DIR)/config/*'
+	@# Build detached: an SSH drop mid-build (slow box) must not cancel it. tail --pid waits for it.
+	@ssh $(PI_HOST) 'cd $(PI_DIR)/src && nohup sh -c "docker compose build -q && docker compose up -d --remove-orphans" > ../build.log 2>&1 & echo $$! > $(PI_DIR)/build.pid'
+	@ssh $(PI_HOST) 'tail -f --pid=$$(cat $(PI_DIR)/build.pid) $(PI_DIR)/build.log; sleep 2; docker ps --filter name=dl-video-api --format "{{.Names}}: {{.Status}}" | grep -q Up || { cat $(PI_DIR)/build.log; exit 1; }'
+	@ssh $(PI_HOST) 'sudo tailscale serve --bg --https=8443 http://127.0.0.1:8765 >/dev/null && sudo tailscale serve status'
+
+# yt-dlp on the Pi has no browser to read cookies from; ship a filtered Netscape
+# jar from this Mac's Chrome. Re-run when logins rotate (Instagram/YouTube do).
+pi-cookies:
+	@python3 scripts/export_cookies.py --browser chrome --out /tmp/dl-video-cookies.txt
+	@scp -q /tmp/dl-video-cookies.txt $(PI_HOST):$(PI_DIR)/config/cookies.txt; rm -f /tmp/dl-video-cookies.txt
+	@ssh $(PI_HOST) 'chmod 600 $(PI_DIR)/config/cookies.txt'
+
+pi-logs:
+	@ssh $(PI_HOST) 'docker logs --tail 100 -f dl-video-api'
+
+pi-stop:
+	@ssh $(PI_HOST) 'sudo tailscale serve --https=8443 off 2>/dev/null; cd $(PI_DIR)/src && docker compose down'
 
 # Install dependencies (installs uv if missing)
 install:

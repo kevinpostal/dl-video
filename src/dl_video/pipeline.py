@@ -66,6 +66,7 @@ def create_job_services(config: Config, container_service: ContainerService) -> 
     return JobServices(
         downloader=VideoDownloader(
             cookies_browser=config.cookies_browser,
+            cookies_file=config.cookies_file,
             container_service=container_service,
         ),
         converter=VideoConverter(container_service=container_service),

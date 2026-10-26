@@ -24,15 +24,26 @@ class VideoDownloader:
     def __init__(
         self,
         cookies_browser: str | None = None,
+        cookies_file: str | None = None,
         container_service: ContainerService | None = None,
     ) -> None:
         self._process: asyncio.subprocess.Process | None = None
         self._cancelled = False
         self._cookies_browser = cookies_browser
+        self._cookies_file = cookies_file
         self._container_service = container_service
 
     def set_cookies_browser(self, browser: str | None) -> None:
         self._cookies_browser = browser
+
+    def _cookie_args(self) -> list[str]:
+        """yt-dlp cookie flags for the local backend: a browser profile wins,
+        else a Netscape cookies.txt (skipped when the file isn't there yet)."""
+        if self._cookies_browser:
+            return ["--cookies-from-browser", self._cookies_browser]
+        if self._cookies_file and Path(self._cookies_file).is_file():
+            return ["--cookies", self._cookies_file]
+        return []
 
     def set_container_service(self, container_service: ContainerService | None) -> None:
         self._container_service = container_service
@@ -47,9 +58,10 @@ class VideoDownloader:
             "--js-runtimes", "node",
         ]
 
+        cookie_args = self._cookie_args()
         attempts = []
-        if self._cookies_browser:
-            attempts.append(base_cmd + ["--cookies-from-browser", self._cookies_browser, "--", url])
+        if cookie_args:
+            attempts.append(base_cmd + cookie_args + ["--", url])
         attempts.append(base_cmd + ["--", url])
 
         last_error = None
@@ -234,9 +246,10 @@ class VideoDownloader:
     ) -> Path:
         attempts = []
 
-        if self._cookies_browser:
+        cookie_args = self._cookie_args()
+        if cookie_args:
             attempts.append(([
-                "yt-dlp", "--cookies-from-browser", self._cookies_browser,
+                "yt-dlp", *cookie_args,
                 "--newline", "--no-warnings", "--js-runtimes", "node",
                 "-f", "bestvideo*+bestaudio/best",
                 "-o", template, "--", url,

@@ -16,6 +16,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 RUN curl -L https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp -o /usr/local/bin/yt-dlp \
     && chmod a+rx /usr/local/bin/yt-dlp
 
+# Node for yt-dlp's JS challenges (the downloader passes --js-runtimes node)
+COPY --from=node:22-slim /usr/local/bin/node /usr/local/bin/node
+
 # Install uv for fast Python package management
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
 

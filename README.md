@@ -87,7 +87,7 @@ Hit `Ctrl+P` → Settings, or edit `~/.config/dl-video/config.json`:
 ## iPhone app
 
 iOS can't run yt-dlp or ffmpeg, so the iPhone app (`ios/`) is a client for an
-API server that runs the same pipeline on this Mac.
+API server that runs the same pipeline on this Mac or on an always-on box.
 
 ```bash
 make serve-api-install  # keep it running (launchd) at https://<mac>.<tailnet>.ts.net:8443
@@ -98,6 +98,29 @@ make serve-api-stop     # stop everything, remove the launchd agent
 The server's bearer token is in `~/.config/dl-video/server_token`; logs go to
 `~/Library/Logs/dl-video-server.log`. Enter the URL and token in the app's
 Settings tab. The iPhone needs the Tailscale app on the same tailnet.
+
+**Away from home:** a sleeping MacBook is off the tailnet, so the phone can't
+reach it. Run the same server on an always-on Linux box instead:
+
+```bash
+make pi-deploy PI_HOST=pi-gate   # docker compose on the Pi + tailscale serve :8443
+make pi-cookies                  # ship Chrome cookies for Instagram/YouTube/... to the Pi
+make pi-logs
+make pi-stop
+```
+
+It rsyncs the sources to `/srv/dl-video/src`, builds the `Containerfile`
+(yt-dlp, ffmpeg, node), keeps state in `/srv/dl-video/{config,downloads}`,
+and copies this Mac's `server_token`/`upload_token` the first time, so the
+app only needs the Pi's URL (`https://pi-gate.<tailnet>.ts.net:8443`).
+Conversions run on the Pi's CPU (libx264, no hardware encoder), so expect
+them to take several times longer than on the Mac.
+
+The Pi has no browser, so its config uses `cookies_file` instead of
+`cookies_browser`: `make pi-cookies` exports only the cookies for the sites in
+`scripts/export_cookies.py` (`--domains` to change) from this Mac's Chrome and
+puts them in `/srv/dl-video/config/cookies.txt`. Sites rotate login cookies, so
+re-run it when Instagram or YouTube downloads start failing with login errors.
 
 Uploads go to `files.brokejokes.com`, a small Elixir service in
 `brokejokes-files/` (deploy with `make -C brokejokes-files deploy`). The upload
