@@ -1,6 +1,8 @@
 """Unit tests for service layer."""
 
 import json
+import shutil
+import subprocess
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -168,9 +170,10 @@ class TestVideoConverter:
         output_path = tmp_path / "output.mp4"
         input_path.write_bytes(b"fake video content")
 
-        # Mock ffprobe for duration
+        # Mock ffprobe: VP9 needs a re-encode, so progress comes from ffmpeg
         mock_probe_process = AsyncMock()
-        mock_probe_process.communicate = AsyncMock(return_value=(b"120.0", b""))
+        probe = {"streams": [{"codec_type": "video", "codec_name": "vp9"}], "format": {"duration": "120.0"}}
+        mock_probe_process.communicate = AsyncMock(return_value=(json.dumps(probe).encode(), b""))
         mock_probe_process.returncode = 0
 
         # Mock ffmpeg process
@@ -230,6 +233,32 @@ class TestVideoConverter:
         assert progress_values[-1] == 100.0
 
     @pytest.mark.asyncio
+    @pytest.mark.skipif(not shutil.which("ffmpeg"), reason="needs ffmpeg/ffprobe")
+    @pytest.mark.parametrize(
+        ("vcodec", "acodec", "src_ext", "remuxed"),
+        [("libx264", "aac", "mp4", True), ("libx264", "aac", "mkv", True), ("mpeg4", "aac", "mkv", False)],
+    )
+    async def test_convert_remuxes_h264_aac_and_reencodes_the_rest(
+        self, converter, tmp_path, vcodec, acodec, src_ext, remuxed
+    ):
+        src = tmp_path / f"in.{src_ext}"
+        subprocess.run(
+            ["ffmpeg", "-v", "error", "-f", "lavfi", "-i", "testsrc=size=64x64:rate=10:duration=1",
+             "-f", "lavfi", "-i", "sine=duration=1", "-c:v", vcodec, "-c:a", acodec, "-shortest", str(src)],
+            check=True,
+        )
+        lines: list[str] = []
+        out = await converter.convert(src, tmp_path / "out.mp4", verbose_callback=lines.append)
+
+        codecs = subprocess.run(
+            ["ffprobe", "-v", "error", "-show_entries", "stream=codec_name", "-of", "csv=p=0", str(out)],
+            capture_output=True, text=True, check=True,
+        ).stdout.split()
+        assert codecs == ["h264", "aac"]
+        command = next(line for line in lines if line.startswith("[ffmpeg] Command:"))
+        assert ("-c copy" in command) is remuxed
+
+    @pytest.mark.asyncio
     async def test_convert_input_not_found(self, converter, tmp_path):
         """Test conversion with missing input file."""
         input_path = tmp_path / "nonexistent.webm"
@@ -247,9 +276,10 @@ class TestVideoConverter:
         output_path = tmp_path / "output.mp4"
         input_path.write_bytes(b"fake video content")
 
-        # Mock ffprobe to succeed
+        # Mock ffprobe to succeed (VP9: needs ffmpeg to re-encode)
         mock_probe_process = AsyncMock()
-        mock_probe_process.communicate = AsyncMock(return_value=(b"120.0", b""))
+        probe = {"streams": [{"codec_type": "video", "codec_name": "vp9"}], "format": {"duration": "120.0"}}
+        mock_probe_process.communicate = AsyncMock(return_value=(json.dumps(probe).encode(), b""))
         mock_probe_process.returncode = 0
 
         call_count = 0

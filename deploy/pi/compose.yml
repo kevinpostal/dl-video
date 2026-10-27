@@ -22,3 +22,6 @@ services:
     environment:
       PYTHONUNBUFFERED: "1"
     restart: always
+    # Leave half the Pi for tailscaled/sshd: a libx264 re-encode on all 4 cores
+    # (on top of other services) starved tailscaled and the phone timed out.
+    cpus: 2

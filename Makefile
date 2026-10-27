@@ -130,9 +130,10 @@ pi-deploy:
 		ssh $(PI_HOST) "test -s $(PI_DIR)/config/$$f" || scp -q $(HOME)/.config/dl-video/$$f $(PI_HOST):$(PI_DIR)/config/$$f; \
 	done
 	@ssh $(PI_HOST) 'test -s $(PI_DIR)/config/config.json || echo '"'"'$(PI_CONFIG)'"'"' > $(PI_DIR)/config/config.json; chmod 600 $(PI_DIR)/config/*'
-	@# Build detached: an SSH drop mid-build (slow box) must not cancel it. tail --pid waits for it.
-	@ssh $(PI_HOST) 'cd $(PI_DIR)/src && nohup sh -c "docker compose build -q && docker compose up -d --remove-orphans" > ../build.log 2>&1 & echo $$! > $(PI_DIR)/build.pid'
-	@ssh $(PI_HOST) 'tail -f --pid=$$(cat $(PI_DIR)/build.pid) $(PI_DIR)/build.log; sleep 2; docker ps --filter name=dl-video-api --format "{{.Names}}: {{.Status}}" | grep -q Up || { cat $(PI_DIR)/build.log; exit 1; }'
+	@# Build detached: an SSH drop mid-build (slow box) must not cancel it. tail --pid waits for it;
+	@# build.rc carries the result (a still-running old container must not look like success).
+	@ssh $(PI_HOST) 'cd $(PI_DIR)/src && rm -f ../build.rc && nohup sh -c "docker compose build -q && docker compose up -d --remove-orphans; echo \$$? > ../build.rc" > ../build.log 2>&1 & echo $$! > $(PI_DIR)/build.pid'
+	@ssh $(PI_HOST) 'tail -f --pid=$$(cat $(PI_DIR)/build.pid) $(PI_DIR)/build.log; test "$$(cat $(PI_DIR)/build.rc 2>/dev/null)" = 0 || { echo "build failed:"; tail -20 $(PI_DIR)/build.log; exit 1; }'
 	@ssh $(PI_HOST) 'sudo tailscale serve --bg --https=8443 http://127.0.0.1:8765 >/dev/null && sudo tailscale serve status'
 
 # yt-dlp on the Pi has no browser to read cookies from; ship a filtered Netscape

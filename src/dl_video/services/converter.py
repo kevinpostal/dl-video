@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import re
+from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Callable
 
@@ -15,6 +17,45 @@ class ConversionError(Exception):
     """Exception raised when conversion fails."""
 
     pass
+
+
+# Re-encode settings for sources an iPhone can't play as-is.
+ENCODE_ARGS = ["-c:v", "libx264", "-preset", "medium", "-crf", "23", "-c:a", "aac", "-b:a", "128k"]
+# H.264 + AAC already plays everywhere: change the container only. Seconds and
+# almost no CPU instead of a full libx264 encode (minutes on a Raspberry Pi).
+REMUX_ARGS = ["-c", "copy", "-movflags", "+faststart"]
+
+
+@dataclass
+class MediaInfo:
+    duration: float = 0.0
+    video_codecs: tuple[str, ...] = ()
+    audio_codecs: tuple[str, ...] = ()
+
+    @classmethod
+    def from_ffprobe_json(cls, text: str) -> MediaInfo:
+        try:
+            data = json.loads(text)
+        except json.JSONDecodeError:
+            return cls()
+        streams = data.get("streams") or []
+        try:
+            duration = float((data.get("format") or {}).get("duration") or 0.0)
+        except ValueError:
+            duration = 0.0
+        return cls(
+            duration=duration,
+            video_codecs=tuple(s.get("codec_name", "") for s in streams if s.get("codec_type") == "video"),
+            audio_codecs=tuple(s.get("codec_name", "") for s in streams if s.get("codec_type") == "audio"),
+        )
+
+    @property
+    def can_remux(self) -> bool:
+        return (
+            bool(self.video_codecs)
+            and all(c == "h264" for c in self.video_codecs)
+            and all(c == "aac" for c in self.audio_codecs)
+        )
 
 
 class VideoConverter:
@@ -41,98 +82,36 @@ class VideoConverter:
         """
         self._container_service = container_service
 
-    async def _get_duration(
-        self,
-        input_path: Path,
-        job_id: str | None = None,
-    ) -> float:
-        """Get video duration in seconds using ffprobe.
+    PROBE_ARGS = [
+        "-v", "error",
+        "-show_entries", "format=duration:stream=codec_type,codec_name",
+        "-of", "json",
+    ]
 
-        Args:
-            input_path: Path to the video file.
-            job_id: Optional job ID for container naming.
-
-        Returns:
-            Duration in seconds.
-        """
-        # Use ContainerService if available
+    async def _probe(self, input_path: Path, job_id: str | None = None) -> MediaInfo:
+        """Duration and stream codecs via ffprobe; empty MediaInfo when probing fails
+        (progress is then unknown and the file is re-encoded)."""
         if self._container_service is not None:
-            return await self._get_duration_via_container(input_path, job_id)
-
-        return await self._get_duration_local(input_path)
-
-    async def _get_duration_via_container(
-        self,
-        input_path: Path,
-        job_id: str | None = None,
-    ) -> float:
-        """Get video duration using ContainerService.
-
-        Args:
-            input_path: Path to the video file.
-            job_id: Optional job ID for container naming.
-
-        Returns:
-            Duration in seconds.
-        """
-        assert self._container_service is not None
-
-        args = [
-            "-v", "error",
-            "-show_entries", "format=duration",
-            "-of", "default=noprint_wrappers=1:nokey=1",
-        ]
-
-        try:
-            result = await self._container_service.run_ffprobe(
-                args=args,
-                input_path=input_path,
-                job_id=job_id,
-            )
-
-            if result.stdout.strip():
-                return float(result.stdout.strip())
-            return 0.0
-        except (ValueError, Exception):
-            return 0.0
-
-    async def _get_duration_local(self, input_path: Path) -> float:
-        """Get video duration using local ffprobe.
-
-        Args:
-            input_path: Path to the video file.
-
-        Returns:
-            Duration in seconds.
-        """
-        cmd = [
-            "ffprobe",
-            "-v",
-            "error",
-            "-show_entries",
-            "format=duration",
-            "-of",
-            "default=noprint_wrappers=1:nokey=1",
-            str(input_path),
-        ]
+            try:
+                result = await self._container_service.run_ffprobe(
+                    args=self.PROBE_ARGS, input_path=input_path, job_id=job_id,
+                )
+            except Exception:
+                return MediaInfo()
+            return MediaInfo.from_ffprobe_json(result.stdout)
 
         try:
             process = await asyncio.create_subprocess_exec(
-                *cmd,
+                "ffprobe", *self.PROBE_ARGS, str(input_path),
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
             )
-            stdout, _ = await process.communicate()
-
-            if process.returncode == 0:
-                try:
-                    return float(stdout.decode().strip())
-                except ValueError:
-                    return 0.0
-            return 0.0
         except FileNotFoundError:
-            return 0.0
-
+            return MediaInfo()
+        stdout, _ = await process.communicate()
+        if process.returncode != 0:
+            return MediaInfo()
+        return MediaInfo.from_ffprobe_json(stdout.decode())
 
     async def convert(
         self,
@@ -165,13 +144,17 @@ class VideoConverter:
         # Ensure output directory exists
         output_path.parent.mkdir(parents=True, exist_ok=True)
 
-        # Get duration for progress calculation
-        duration = await self._get_duration(input_path, job_id)
-        
+        info = await self._probe(input_path, job_id)
+        duration = info.duration
+        codec_args = REMUX_ARGS if info.can_remux else ENCODE_ARGS
+
         if verbose_callback:
             verbose_callback(f"[ffmpeg] Converting: {input_path.name}")
             verbose_callback(f"[ffmpeg] Output: {output_path.name}")
             verbose_callback(f"[ffmpeg] Duration: {duration:.1f}s")
+            verbose_callback(
+                f"[ffmpeg] Command: ffmpeg -i {input_path.name} {' '.join(codec_args)} {output_path.name}"
+            )
 
         # Use ContainerService if available
         if self._container_service is not None:
@@ -179,6 +162,7 @@ class VideoConverter:
                 input_path=input_path,
                 output_path=output_path,
                 duration=duration,
+                codec_args=codec_args,
                 progress_callback=progress_callback,
                 verbose_callback=verbose_callback,
                 job_id=job_id,
@@ -189,6 +173,7 @@ class VideoConverter:
             input_path=input_path,
             output_path=output_path,
             duration=duration,
+            codec_args=codec_args,
             progress_callback=progress_callback,
             verbose_callback=verbose_callback,
         )
@@ -198,6 +183,7 @@ class VideoConverter:
         input_path: Path,
         output_path: Path,
         duration: float,
+        codec_args: list[str],
         progress_callback: Callable[[float], None] | None = None,
         verbose_callback: Callable[[str], None] | None = None,
         job_id: str | None = None,
@@ -208,6 +194,7 @@ class VideoConverter:
             input_path: Path to the input video file.
             output_path: Path where the converted video should be saved.
             duration: Video duration in seconds.
+            codec_args: ENCODE_ARGS or REMUX_ARGS.
             progress_callback: Optional callback for progress updates (0-100).
             verbose_callback: Optional callback for ffmpeg output lines.
             job_id: Optional job ID for container naming.
@@ -220,20 +207,13 @@ class VideoConverter:
         """
         assert self._container_service is not None
 
-        if verbose_callback:
-            verbose_callback(f"[ffmpeg] Command: ffmpeg -i {input_path.name} -c:v libx264 -crf 23 -c:a aac {output_path.name}")
-
         # Build ffmpeg arguments (without -i input and output path)
         args = [
             "-y",  # Overwrite output file
             "-progress", "pipe:1",  # Output progress to stdout
             "-nostats",  # Don't show encoding stats
             "-loglevel", "info" if verbose_callback else "error",
-            "-c:v", "libx264",  # Video codec
-            "-preset", "medium",  # Encoding preset
-            "-crf", "23",  # Quality (lower = better, 18-28 is reasonable)
-            "-c:a", "aac",  # Audio codec
-            "-b:a", "128k",  # Audio bitrate
+            *codec_args,
         ]
 
         current_time = 0.0
@@ -307,6 +287,7 @@ class VideoConverter:
         input_path: Path,
         output_path: Path,
         duration: float,
+        codec_args: list[str],
         progress_callback: Callable[[float], None] | None = None,
         verbose_callback: Callable[[str], None] | None = None,
     ) -> Path:
@@ -316,6 +297,7 @@ class VideoConverter:
             input_path: Path to the input video file.
             output_path: Path where the converted video should be saved.
             duration: Video duration in seconds.
+            codec_args: ENCODE_ARGS or REMUX_ARGS.
             progress_callback: Optional callback for progress updates (0-100).
             verbose_callback: Optional callback for ffmpeg output lines.
 
@@ -337,21 +319,9 @@ class VideoConverter:
             "-nostats",  # Don't show encoding stats
             "-loglevel",
             loglevel,
-            "-c:v",
-            "libx264",  # Video codec
-            "-preset",
-            "medium",  # Encoding preset
-            "-crf",
-            "23",  # Quality (lower = better, 18-28 is reasonable)
-            "-c:a",
-            "aac",  # Audio codec
-            "-b:a",
-            "128k",  # Audio bitrate
+            *codec_args,
             str(output_path),
         ]
-        
-        if verbose_callback:
-            verbose_callback(f"[ffmpeg] Command: ffmpeg -i {input_path.name} -c:v libx264 -crf 23 -c:a aac {output_path.name}")
 
         try:
             self._process = await asyncio.create_subprocess_exec(
