@@ -1,4 +1,4 @@
-.PHONY: test deploy logs
+.PHONY: test deploy logs backfill
 
 HOST := ovh
 DIR := /opt/bj-files
@@ -15,3 +15,8 @@ deploy:
 
 logs:
 	ssh $(HOST) 'sudo docker logs --tail 100 -f bj-files'
+
+# Run inside the live node so backfill shares its bounded admission gate.
+# Failed legacy originals are preserved; rerunning skips already-ready files.
+backfill:
+	ssh $(HOST) 'cd $(DIR) && sudo docker compose exec -T bj-files /app/bin/bj_files rpc "result = BjFiles.Media.backfill(); IO.inspect(result, limit: :infinity); if result.failed != [], do: raise(\"backfill failed for some originals\")"'

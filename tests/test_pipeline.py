@@ -7,7 +7,7 @@ from dl_video.models import Job, OperationState
 from dl_video.pipeline import JobHooks, build_output_path, run_job
 from dl_video.services.converter import ConversionError
 from dl_video.utils.history import HistoryManager
-from tests.fakes import UPLOAD_URL, FakeConverter, FakeDownloader, FakeUploader, fake_services
+from tests.fakes import UPLOAD, FakeConverter, FakeDownloader, FakeUploader, fake_services
 
 URL = "https://www.youtube.com/watch?v=abc"
 URL_HASH = hashlib.md5(URL.encode()).hexdigest()[:8]
@@ -29,8 +29,9 @@ async def test_happy_path_converts_uploads_and_records_history(tmp_path: Path):
     assert not (dl_dir / f"my_clip_{URL_HASH}.webm").exists()
     assert (dl_dir / record.filename).read_bytes() == b"converted-bytes"
     assert job.state == OperationState.COMPLETED
-    assert job.upload_url == UPLOAD_URL
-    assert HistoryManager(tmp_path / "history.json").get_all()[0].upload_url == UPLOAD_URL
+    assert (job.upload_url, job.download_url) == (UPLOAD.url, UPLOAD.download_url)
+    saved = HistoryManager(tmp_path / "history.json").get_all()[0]
+    assert (saved.upload_url, saved.download_url) == (UPLOAD.url, UPLOAD.download_url)
 
 
 async def test_mp4_download_converts_via_temp_and_keeps_final_name(tmp_path: Path):
@@ -57,8 +58,8 @@ async def test_upload_skipped_when_not_requested(tmp_path: Path):
     )
 
     assert uploader.uploaded == []
-    assert record is not None and record.upload_url is None
-    assert job.upload_url is None
+    assert record is not None and record.upload_url is None and record.download_url is None
+    assert job.upload_url is None and job.download_url is None
 
 
 async def test_conversion_error_marks_job_and_removes_download(tmp_path: Path):

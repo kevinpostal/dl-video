@@ -19,18 +19,24 @@ class ConversionError(Exception):
     pass
 
 
-# Re-encode settings for sources an iPhone can't play as-is.
-ENCODE_ARGS = ["-c:v", "libx264", "-preset", "medium", "-crf", "23", "-c:a", "aac", "-b:a", "128k"]
-# H.264 + AAC already plays everywhere: change the container only. Seconds and
-# almost no CPU instead of a full libx264 encode (minutes on a Raspberry Pi).
+# Re-encode settings for sources an iPhone can't play as-is. 8-bit 4:2:0 is what
+# every player decodes (4:4:4 and 10-bit H.264 are not); yuv420p needs even
+# dimensions; faststart puts the index first so playback can begin streaming.
+ENCODE_ARGS = [
+    "-vf", "scale=trunc(iw/2)*2:trunc(ih/2)*2",
+    "-c:v", "libx264", "-preset", "medium", "-crf", "23", "-pix_fmt", "yuv420p",
+    "-c:a", "aac", "-b:a", "128k",
+    "-movflags", "+faststart",
+]
+# Only ordinary 8-bit H.264 and AAC-LC are safe to remux for mobile players.
+# Codec names alone do not distinguish 10-bit/4:4:4 video or HE-AAC audio.
 REMUX_ARGS = ["-c", "copy", "-movflags", "+faststart"]
 
 
 @dataclass
 class MediaInfo:
     duration: float = 0.0
-    video_codecs: tuple[str, ...] = ()
-    audio_codecs: tuple[str, ...] = ()
+    can_remux: bool = False
 
     @classmethod
     def from_ffprobe_json(cls, text: str) -> MediaInfo:
@@ -43,19 +49,22 @@ class MediaInfo:
             duration = float((data.get("format") or {}).get("duration") or 0.0)
         except ValueError:
             duration = 0.0
+        videos = [s for s in streams if s.get("codec_type") == "video"]
+        audios = [s for s in streams if s.get("codec_type") == "audio"]
         return cls(
             duration=duration,
-            video_codecs=tuple(s.get("codec_name", "") for s in streams if s.get("codec_type") == "video"),
-            audio_codecs=tuple(s.get("codec_name", "") for s in streams if s.get("codec_type") == "audio"),
+            can_remux=(
+                bool(videos)
+                and all(
+                    s.get("codec_name") == "h264"
+                    and s.get("pix_fmt") == "yuv420p"
+                    and s.get("profile") in ("Baseline", "Constrained Baseline", "Main", "High")
+                    for s in videos
+                )
+                and all(s.get("codec_name") == "aac" and s.get("profile") == "LC" for s in audios)
+            ),
         )
 
-    @property
-    def can_remux(self) -> bool:
-        return (
-            bool(self.video_codecs)
-            and all(c == "h264" for c in self.video_codecs)
-            and all(c == "aac" for c in self.audio_codecs)
-        )
 
 
 class VideoConverter:
@@ -84,7 +93,7 @@ class VideoConverter:
 
     PROBE_ARGS = [
         "-v", "error",
-        "-show_entries", "format=duration:stream=codec_type,codec_name",
+        "-show_entries", "format=duration:stream=codec_type,codec_name,pix_fmt,profile",
         "-of", "json",
     ]
 

@@ -5,6 +5,8 @@ from dataclasses import asdict, dataclass
 from datetime import datetime
 from pathlib import Path
 
+from dl_video.services.uploader import UploadResult, share_url_for_raw_file
+
 
 @dataclass
 class MetadataRecord:
@@ -62,7 +64,11 @@ class MetadataRecord:
 
 @dataclass
 class HistoryRecord:
-    """A single history record."""
+    """A single history record.
+
+    `upload_url` is the public share page; `download_url` the original file.
+    Records from before share pages may lack a download URL.
+    """
 
     filename: str
     source_url: str
@@ -70,6 +76,7 @@ class HistoryRecord:
     file_size: int | None
     upload_url: str | None
     timestamp: str
+    download_url: str | None = None
     metadata: MetadataRecord | None = None
 
     @classmethod
@@ -79,7 +86,7 @@ class HistoryRecord:
         source_url: str,
         file_path: Path,
         file_size: int | None = None,
-        upload_url: str | None = None,
+        upload: UploadResult | None = None,
         metadata: MetadataRecord | None = None,
     ) -> "HistoryRecord":
         """Create a new history record with current timestamp."""
@@ -88,10 +95,25 @@ class HistoryRecord:
             source_url=source_url,
             file_path=str(file_path),
             file_size=file_size,
-            upload_url=upload_url,
+            upload_url=upload.url if upload else None,
+            download_url=upload.download_url if upload else None,
             timestamp=datetime.now().isoformat(),
             metadata=metadata,
         )
+
+
+def _upgrade_legacy_links(record_data: dict) -> None:
+    """Records saved before share pages shared the raw `/f/` file URL (with no
+    download_url, or the same URL as both). For this host's exact raw URLs,
+    share the page and keep the raw URL for downloading; any other link is left
+    as it is."""
+    upload_url = record_data.get("upload_url")
+    if not isinstance(upload_url, str) or record_data.get("download_url") not in (None, upload_url):
+        return
+    share_url = share_url_for_raw_file(upload_url)
+    if share_url is not None:
+        record_data["upload_url"] = share_url
+        record_data["download_url"] = upload_url
 
 
 class HistoryManager:
@@ -127,6 +149,7 @@ class HistoryManager:
                 metadata = None
                 if metadata_data:
                     metadata = MetadataRecord(**metadata_data)
+                _upgrade_legacy_links(record_data)
                 self._records.append(HistoryRecord(**record_data, metadata=metadata))
         except (json.JSONDecodeError, TypeError, KeyError):
             self._records = []

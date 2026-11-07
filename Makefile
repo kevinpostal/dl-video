@@ -96,14 +96,15 @@ serve-api-stop: serve-api-uninstall
 
 LAUNCHD_LABEL := com.kevinpostal.dl-video-server
 LAUNCHD_PLIST := $(HOME)/Library/LaunchAgents/$(LAUNCHD_LABEL).plist
+API_VENV := $(HOME)/.local/share/dl-video/server-venv
 
 # Keep the API server running across logins/crashes; the tailscale serve
 # config set with --bg persists on its own.
 serve-api-install:
-	@$(UV) sync --inexact --quiet
+	@export UV_PROJECT_ENVIRONMENT=$(API_VENV); $(UV) sync --no-editable --inexact --quiet
 	@lsof -ti:8765 | xargs kill 2>/dev/null || true
 	@mkdir -p $(dir $(LAUNCHD_PLIST))
-	@sed -e 's|@VENV@|$(UV_PROJECT_ENVIRONMENT)|g' -e 's|@HOME@|$(HOME)|g' scripts/dl-video-server.plist.in > $(LAUNCHD_PLIST)
+	@sed -e 's|@VENV@|$(API_VENV)|g' -e 's|@HOME@|$(HOME)|g' scripts/dl-video-server.plist.in > $(LAUNCHD_PLIST)
 	@launchctl bootout gui/$$(id -u)/$(LAUNCHD_LABEL) 2>/dev/null || true
 	@chmod 600 $(HOME)/Library/Logs/dl-video-server.log 2>/dev/null || true
 	@chmod 600 $(HOME)/.config/dl-video/*.json 2>/dev/null || true

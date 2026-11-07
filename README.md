@@ -99,6 +99,12 @@ The server's bearer token is in `~/.config/dl-video/server_token`; logs go to
 `~/Library/Logs/dl-video-server.log`. Enter the URL and token in the app's
 Settings tab. The iPhone needs the Tailscale app on the same tailnet.
 
+The launchd service installs a non-editable wheel into
+`~/.local/share/dl-video/server-venv`, separate from the development environment.
+It does not import Python source from iCloud Drive, where background reads can
+fail with `Resource deadlock avoided`; development commands cannot replace its
+installed package. Re-run `make serve-api-install` after changing server code.
+
 **Away from home:** a sleeping MacBook is off the tailnet, so the phone can't
 reach it. Run the same server on an always-on Linux box instead:
 
@@ -125,11 +131,70 @@ re-run it when Instagram or YouTube downloads start failing with login errors.
 Uploads go to `files.brokejokes.com`, a small Elixir service in
 `brokejokes-files/` (deploy with `make -C brokejokes-files deploy`). The upload
 token lives in `~/.config/dl-video/upload_token` (or `DL_VIDEO_UPLOAD_TOKEN`).
-The app saves uploaded videos from that public URL, so saving to Photos works
-off the tailnet too.
+The app copies a public **share page** URL (`/s/<name>`), not the raw MP4.
+Saving to Photos or Files uses the separate original-file URL (`/f/<name>`),
+so it still works off the tailnet and never downloads the HTML page as a video.
 
 Cloudflare caps proxied request bodies at 100 MB, so larger uploads fail with
 HTTP 413.
+
+### Public sharing and previews
+
+Share pages supply OpenGraph metadata for link unfurlers (Telegram, Discord,
+WhatsApp, Messages, Facebook and others), a JPEG poster, and an HTTPS
+Twitter/X player card. They also contain a native browser player and a
+**Download original** button. Platform policy, preview settings and caches
+still control the final card: this does not promise inline playback everywhere.
+Instagram/TikTok-style native video posts still require uploading the file.
+
+The host probes uploaded content rather than trusting its extension. Safe,
+small H.264/AAC MP4s keep their original quality; other videos receive a
+separate full-duration H.264/AAC, 8-bit `yuv420p`, fast-start preview. Encoded
+previews fit within 1280 pixels on the long edge and **19 MiB**, below the
+[independently measured Telegram 20 MiB preview boundary](https://github.com/Bl0ck154/InstaFix-Revived/blob/main/docs/telegram-reel-previews.md).
+The original is never replaced by the preview. HDR sources are tone-mapped
+to SDR when supported; unsupported/corrupt media fails explicitly. Extremely
+long videos that cannot fit at the minimum preview bitrate are rejected,
+not silently shortened. Images and audio uploads remain supported.
+
+Uploads return `202 {status_url, name}` promptly. The client polls the
+bearer-authenticated status URL on the same origin until `200` provides
+`{url, download_url, preview_url, name}`. `url` is the share page; `download_url`
+is the original; `preview_url` is null for non-video media. Jobs/history expose
+the additive `download_url` field alongside `upload_url` (now the share page).
+The client waits at most 30 minutes; failed preparation never becomes a
+successful share link. Pending jobs survive server restarts; overload returns
+503 with `Retry-After` rather than growing an unbounded encoding queue.
+
+Deploy the host **before** the updated API/client, then prepare old uploads:
+
+```bash
+make -C brokejokes-files deploy
+make -C brokejokes-files backfill
+```
+
+Backfill is idempotent, shares the live encoding limit, reports failures and
+preserves legacy originals. Existing `/f/` links keep serving the same bytes.
+Old own-host history links migrate to `/s/` for sharing while retaining `/f/`
+for downloads; old messages containing raw links are not rewritten. Use the
+new share URL when re-linking. Unprepared legacy pages offer the original
+without advertising missing media; public GETs never start an encode.
+
+Host `.env` controls `MEDIA_MAX_CONCURRENCY` (default 1),
+`MEDIA_THREADS` (2), `MEDIA_TIMEOUT_SECONDS` (600 per preparation) and
+`MAX_UPLOAD_BYTES` (524288000 at the application; Cloudflare can be lower).
+`PUBLIC_URL` must be the public HTTPS origin reachable by crawlers. Persist
+the entire data volume, including `.previews/` and its durable job markers.
+The release image includes FFmpeg/ffprobe. Each preparation has bounded
+subprocess output, threads, dimensions and wall time; failed new uploads are
+removed, while backfill failures leave existing downloads intact.
+
+Share HTML revalidates on a short cache lifetime; immutable media supports
+HEAD, byte ranges, validators and cross-origin playback. Do not put login
+pages, bot challenges or a `robots.txt` disallow in front of public share,
+poster, preview or original URLs. If a platform cached an earlier failure,
+use its preview refresh/debugger; test fresh media with a genuinely new path,
+not only a query-string change.
 
 Ways to send a link or file from another app (e.g. Messages):
 

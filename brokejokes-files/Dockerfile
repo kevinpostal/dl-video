@@ -11,7 +11,8 @@ RUN mix release
 
 # Same Alpine release as the builder image, so the release's ERTS links against matching libraries.
 FROM alpine:3.24
-RUN apk add --no-cache libstdc++ ncurses-libs openssl
+# ffmpeg/ffprobe (built with libx264 and zimg, so HDR tone mapping works) prepare share previews.
+RUN apk add --no-cache libstdc++ ncurses-libs openssl ffmpeg
 WORKDIR /app
 COPY --from=build /src/_build/prod/rel/bj_files /app
 ENV HOME=/app

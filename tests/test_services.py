@@ -1,15 +1,43 @@
 """Unit tests for service layer."""
 
+import asyncio
 import json
 import shutil
 import subprocess
+from contextlib import contextmanager
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
 from dl_video.services.converter import ConversionError, VideoConverter
 from dl_video.services.downloader import DownloadError, VideoDownloader
-from dl_video.services.uploader import FileUploader, UploadError
+from dl_video.services.uploader import FileUploader, UploadError, UploadResult
+
+SHARE_URL = "https://files.brokejokes.com/s/abcdefgh123.mp4"
+RAW_URL = "https://files.brokejokes.com/f/abcdefgh123.mp4"
+STATUS_URL = "https://files.brokejokes.com/status/abcdefgh123.mp4"
+READY = {"url": SHARE_URL, "download_url": RAW_URL, "preview_url": None, "name": "abcdefgh123.mp4"}
+
+
+def _response(status: int, body: object = None, headers: dict | None = None) -> MagicMock:
+    response = MagicMock()
+    response.status_code = status
+    response.json.return_value = body
+    response.text = json.dumps(body)
+    response.headers = headers or {}
+    return response
+
+
+@contextmanager
+def _mock_http(post: MagicMock, gets: list[MagicMock] = ()):
+    with patch("httpx.AsyncClient") as mock_client_class:
+        mock_client = AsyncMock()
+        mock_client.post = AsyncMock(return_value=post)
+        mock_client.get = AsyncMock(side_effect=list(gets))
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=None)
+        mock_client_class.return_value = mock_client
+        yield mock_client
 
 
 class TestVideoDownloader:
@@ -235,11 +263,11 @@ class TestVideoConverter:
     @pytest.mark.asyncio
     @pytest.mark.skipif(not shutil.which("ffmpeg"), reason="needs ffmpeg/ffprobe")
     @pytest.mark.parametrize(
-        ("vcodec", "acodec", "src_ext", "remuxed"),
-        [("libx264", "aac", "mp4", True), ("libx264", "aac", "mkv", True), ("mpeg4", "aac", "mkv", False)],
+        ("vcodec", "acodec", "src_ext"),
+        [("libx264", "aac", "mp4"), ("libx264", "aac", "mkv"), ("mpeg4", "aac", "mkv")],
     )
-    async def test_convert_remuxes_h264_aac_and_reencodes_the_rest(
-        self, converter, tmp_path, vcodec, acodec, src_ext, remuxed
+    async def test_convert_common_containers(
+        self, converter, tmp_path, vcodec, acodec, src_ext
     ):
         src = tmp_path / f"in.{src_ext}"
         subprocess.run(
@@ -255,8 +283,40 @@ class TestVideoConverter:
             capture_output=True, text=True, check=True,
         ).stdout.split()
         assert codecs == ["h264", "aac"]
-        command = next(line for line in lines if line.startswith("[ffmpeg] Command:"))
-        assert ("-c copy" in command) is remuxed
+
+    @pytest.mark.asyncio
+    @pytest.mark.skipif(not shutil.which("ffmpeg"), reason="needs ffmpeg/ffprobe")
+    async def test_reencode_output_streams_and_plays_everywhere(self, converter, tmp_path):
+        # Codec names alone are not enough: 4:4:4 H.264 with AAC still needs
+        # 8-bit 4:2:0 normalization, even dimensions and streaming metadata.
+        src = tmp_path / "in.mkv"
+        subprocess.run(
+            ["ffmpeg", "-v", "error", "-f", "lavfi", "-i", "testsrc=size=65x49:rate=10:duration=1",
+             "-f", "lavfi", "-i", "sine=duration=1", "-c:v", "libx264", "-pix_fmt", "yuv444p",
+             "-c:a", "aac", "-shortest", str(src)],
+            check=True,
+        )
+
+        out = await converter.convert(src, tmp_path / "out.mp4")
+
+        video = json.loads(subprocess.run(
+            ["ffprobe", "-v", "error", "-select_streams", "v:0",
+             "-show_entries", "stream=codec_name,pix_fmt,width,height", "-of", "json", str(out)],
+            capture_output=True, text=True, check=True,
+        ).stdout)["streams"][0]
+        assert {k: video.get(k) for k in ("codec_name", "pix_fmt", "width", "height")} == {
+            "codec_name": "h264", "pix_fmt": "yuv420p", "width": 64, "height": 48,
+        }
+
+        data = out.read_bytes()
+        boxes, offset = [], 0
+        while offset + 8 <= len(data):
+            size = int.from_bytes(data[offset:offset + 4], "big")
+            boxes.append(data[offset + 4:offset + 8])
+            if size < 8:
+                break
+            offset += size
+        assert boxes.index(b"moov") < boxes.index(b"mdat")
 
     @pytest.mark.asyncio
     async def test_convert_input_not_found(self, converter, tmp_path):
@@ -312,34 +372,135 @@ class TestFileUploader:
         """Create a FileUploader instance."""
         return FileUploader(token="t")
 
-    @pytest.mark.asyncio
-    async def test_upload_success(self, uploader, tmp_path):
-        """Test successful upload."""
+    @pytest.fixture
+    def no_poll_delay(self, monkeypatch):
+        monkeypatch.setattr(FileUploader, "POLL_INTERVAL", 0)
+
+    async def test_upload_waits_for_preparation_then_returns_share_and_original(
+        self, uploader, tmp_path, no_poll_delay
+    ):
         file_path = tmp_path / "video.mp4"
         file_path.write_bytes(b"fake video content" * 100)
-
         progress_values = []
+        accepted = _response(202, {"status_url": STATUS_URL, "name": "abcdefgh123.mp4"})
 
-        def progress_callback(progress):
-            progress_values.append(progress)
+        with _mock_http(accepted, [_response(202, {}), _response(202, {}), _response(200, READY)]) as client:
+            result = await uploader.upload(file_path, progress_values.append)
 
-        mock_response = MagicMock()
-        mock_response.status_code = 201
-        mock_response.json.return_value = {"url": "https://files.brokejokes.com/f/abc123.mp4"}
+        assert result == UploadResult(url=SHARE_URL, download_url=RAW_URL)
+        assert client.post.call_args.kwargs["headers"] == {"Authorization": "Bearer t"}
+        assert [c.args[0] for c in client.get.call_args_list] == [STATUS_URL] * 3
+        assert all(c.kwargs["headers"] == {"Authorization": "Bearer t"} for c in client.get.call_args_list)
+        # Not complete until the share page is ready.
+        assert progress_values[-1] == 100.0 and max(progress_values[:-1]) < 100.0
 
-        with patch("httpx.AsyncClient") as mock_client_class:
-            mock_client = AsyncMock()
-            mock_client.post = AsyncMock(return_value=mock_response)
-            mock_client.__aenter__ = AsyncMock(return_value=mock_client)
-            mock_client.__aexit__ = AsyncMock(return_value=None)
-            mock_client_class.return_value = mock_client
+    @pytest.mark.parametrize(
+        "payload",
+        [
+            {"url": SHARE_URL},
+            {"url": SHARE_URL, "download_url": None},
+            {"url": SHARE_URL, "download_url": "https://"},
+            {"url": SHARE_URL, "download_url": "file:///etc/passwd"},
+            {"url": SHARE_URL, "download_url": "https://user:secret@files.example/a.mp4"},
+        ],
+    )
+    async def test_invalid_ready_links_never_complete_upload(self, uploader, tmp_path, payload):
+        file_path = tmp_path / "video.mp4"
+        file_path.write_bytes(b"x")
+        progress = []
+        with _mock_http(_response(201, payload)):
+            with pytest.raises(UploadError):
+                await uploader.upload(file_path, progress.append)
+        assert 100.0 not in progress
 
-            url = await uploader.upload(file_path, progress_callback)
+    @pytest.mark.parametrize(
+        "status_url",
+        [
+            "https://evil.example/status/abcdefgh123.mp4",
+            "http://files.brokejokes.com/status/abcdefgh123.mp4",
+            "https://files.brokejokes.com:8443/status/abcdefgh123.mp4",
+            "https://user@files.brokejokes.com/status/abcdefgh123.mp4",
+            "/status/abcdefgh123.mp4",
+            None,
+        ],
+    )
+    async def test_status_url_off_the_upload_origin_never_gets_the_token(
+        self, uploader, tmp_path, no_poll_delay, status_url
+    ):
+        file_path = tmp_path / "video.mp4"
+        file_path.write_bytes(b"x")
 
-        assert url == "https://files.brokejokes.com/f/abc123.mp4"
-        assert mock_client.post.call_args.kwargs["headers"] == {"Authorization": "Bearer t"}
-        assert len(progress_values) > 0
-        assert progress_values[-1] == 100.0
+        with _mock_http(_response(202, {"status_url": status_url})) as client:
+            with pytest.raises(UploadError, match="Unexpected response"):
+                await uploader.upload(file_path)
+
+        client.get.assert_not_called()
+
+    @pytest.mark.parametrize(
+        ("status", "body", "message"),
+        [
+            (422, {"error": "invalid media"}, "could not prepare this file: invalid media"),
+            (504, {"error": "timeout"}, "timed out preparing"),
+            (404, {"error": "not found"}, "no longer knows this upload"),
+            # Redirects are not followed: the token stays on the upload origin.
+            (302, {}, "failed with status 302"),
+        ],
+    )
+    async def test_failed_preparation_is_an_error_not_an_early_url(
+        self, uploader, tmp_path, no_poll_delay, status, body, message
+    ):
+        file_path = tmp_path / "video.mp4"
+        file_path.write_bytes(b"x")
+        accepted = _response(202, {"status_url": STATUS_URL})
+
+        with _mock_http(accepted, [_response(202, {}), _response(status, body)]):
+            with pytest.raises(UploadError, match=message):
+                await uploader.upload(file_path)
+
+    async def test_busy_server_refusal_says_when_to_retry(self, uploader, tmp_path):
+        file_path = tmp_path / "video.mp4"
+        file_path.write_bytes(b"x")
+
+        with _mock_http(_response(503, {"error": "busy"}, {"Retry-After": "30"})):
+            with pytest.raises(UploadError, match="busy; try again in 30 seconds"):
+                await uploader.upload(file_path)
+
+    @pytest.mark.parametrize("phase", ["sleep", "request"])
+    async def test_gives_up_when_preparation_outlasts_deadline(
+        self, uploader, tmp_path, monkeypatch, phase
+    ):
+        monkeypatch.setattr(FileUploader, "PREPARE_TIMEOUT", 0.02)
+        monkeypatch.setattr(FileUploader, "POLL_INTERVAL", 3600 if phase == "sleep" else 0)
+        file_path = tmp_path / "video.mp4"
+        file_path.write_bytes(b"x")
+
+        async def slow_status(*args, **kwargs):
+            await asyncio.sleep(3600)
+
+        with _mock_http(_response(202, {"status_url": STATUS_URL})) as client:
+            client.get.side_effect = slow_status
+            with pytest.raises(UploadError, match="still preparing"):
+                await asyncio.wait_for(uploader.upload(file_path), timeout=0.5)
+
+    async def test_cancel_interrupts_waiting_for_preparation(self, uploader, tmp_path, monkeypatch):
+        monkeypatch.setattr(FileUploader, "POLL_INTERVAL", 3600)
+        file_path = tmp_path / "video.mp4"
+        file_path.write_bytes(b"x")
+        uploaded = asyncio.Event()
+
+        def on_progress(value: float) -> None:
+            if value == 90.0:
+                uploaded.set()
+
+        with _mock_http(_response(202, {"status_url": STATUS_URL})) as client:
+            task = asyncio.create_task(uploader.upload(file_path, on_progress))
+            await asyncio.wait_for(uploaded.wait(), 5)
+            await asyncio.sleep(0)
+            uploader.cancel()
+            with pytest.raises(UploadError, match="cancelled"):
+                await asyncio.wait_for(task, 5)
+
+        client.get.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_upload_without_token_fails_before_network(self, tmp_path, monkeypatch):

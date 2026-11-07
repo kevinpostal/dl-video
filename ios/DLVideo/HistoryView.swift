@@ -115,12 +115,12 @@ struct HistoryDetailView: View {
                         .font(.system(size: 26, weight: .bold).width(.condensed))
                         .fixedSize(horizontal: false, vertical: true)
                 }
-                let publicURL = item.uploadUrl.flatMap(URL.init(string:))
-                if publicURL != nil || item.fileUrl != nil {
-                    SaveToPhoneSection(publicURL: publicURL, serverPath: item.fileUrl, fileName: item.filename)
+                let fileURL = item.originalFileURL
+                if fileURL != nil || item.fileUrl != nil {
+                    SaveToPhoneSection(fileURL: fileURL, serverPath: item.fileUrl, fileName: item.filename)
                 }
-                if let publicURL {
-                    UploadLinkSection(url: publicURL)
+                if let shareURL = item.shareURL {
+                    UploadLinkSection(url: shareURL)
                 }
                 VStack(alignment: .leading, spacing: 0) {
                     SectionLabel("Details").padding(.bottom, Theme.unit * 1.5)

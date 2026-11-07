@@ -11,7 +11,7 @@ from aiohttp.test_utils import TestClient, TestServer
 from dl_video.models import Config
 from dl_video.server import JobManager, create_app
 from dl_video.utils.config import ConfigManager
-from tests.fakes import FakeDownloader, fake_services
+from tests.fakes import UPLOAD, FakeDownloader, fake_services
 
 AUTH = {"Authorization": "Bearer t"}
 URL = "https://www.youtube.com/watch?v=abc"
@@ -204,3 +204,42 @@ async def test_unknown_job_is_404(client: TestClient):
     assert (await client.get("/api/jobs/nope", headers=AUTH)).status == 404
     assert (await client.post("/api/jobs/nope/cancel", headers=AUTH)).status == 404
     assert (await client.delete("/api/jobs/nope", headers=AUTH)).status == 404
+
+
+async def test_uploaded_job_exposes_share_page_and_original(client: TestClient):
+    resp = await client.post("/api/jobs", json={"url": URL, "upload": True}, headers=AUTH)
+    job = await wait_for_state(client, (await resp.json())["id"], "completed")
+
+    assert (job["upload_url"], job["download_url"]) == (UPLOAD.url, UPLOAD.download_url)
+    item = (await (await client.get("/api/history", headers=AUTH)).json())["items"][0]
+    assert (item["upload_url"], item["download_url"]) == (UPLOAD.url, UPLOAD.download_url)
+
+
+async def test_history_saved_before_share_pages_stays_downloadable(client: TestClient):
+    raw = "https://files.brokejokes.com/f/Ab3_x-9Zq1w2.mp4"
+    foreign = "https://example.com/f/Ab3_x-9Zq1w2.mp4"
+    lookalike = "https://files.brokejokes.com/f/Ab3_x-9Zq1w2.mp4?x=1"
+    legacy = [
+        {"filename": f"{i}.mp4", "source_url": URL, "file_path": f"/nowhere/{i}.mp4",
+         "file_size": 1, "upload_url": url, "timestamp": "2026-01-01T00:00:00"}
+        for i, url in enumerate([raw, foreign, lookalike, None])
+    ]
+    history_file = Path.home() / ".config" / "dl-video" / "history.json"
+    history_file.write_text(json.dumps({"history": legacy}))
+
+    items = (await (await client.get("/api/history", headers=AUTH)).json())["items"]
+
+    assert [(i["upload_url"], i["download_url"]) for i in items] == [
+        ("https://files.brokejokes.com/s/Ab3_x-9Zq1w2.mp4", raw),
+        (foreign, None),
+        (lookalike, None),
+        (None, None),
+    ]
+
+    # A new entry rewrites the file; old records keep both links.
+    resp = await client.post("/api/jobs", json={"url": URL, "upload": False}, headers=AUTH)
+    await wait_for_state(client, (await resp.json())["id"], "completed")
+    items = (await (await client.get("/api/history", headers=AUTH)).json())["items"]
+    assert (items[1]["upload_url"], items[1]["download_url"]) == (
+        "https://files.brokejokes.com/s/Ab3_x-9Zq1w2.mp4", raw,
+    )

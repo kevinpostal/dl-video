@@ -5,8 +5,11 @@ from pathlib import Path
 
 from dl_video.models import VideoMetadata
 from dl_video.pipeline import JobServices
+from dl_video.services.uploader import UploadResult
 
-UPLOAD_URL = "https://example.com/f"
+UPLOAD = UploadResult(
+    url="https://example.com/s/abcdefgh.mp4", download_url="https://example.com/f/abcdefgh.mp4"
+)
 
 
 class FakeDownloader:
@@ -53,9 +56,9 @@ class FakeUploader:
     def __init__(self) -> None:
         self.uploaded: list[Path] = []
 
-    async def upload(self, file_path: Path, progress_callback=None, verbose_callback=None) -> str:
+    async def upload(self, file_path: Path, progress_callback=None, verbose_callback=None) -> UploadResult:
         self.uploaded.append(file_path)
-        return UPLOAD_URL
+        return UPLOAD
 
     def cancel(self) -> None:
         pass

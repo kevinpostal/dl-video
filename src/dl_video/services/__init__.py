@@ -14,7 +14,7 @@ from dl_video.services.errors import (
     detect_volume_mount_permission_error,
     format_error_for_ui,
 )
-from dl_video.services.uploader import FileUploader, UploadError
+from dl_video.services.uploader import FileUploader, UploadError, UploadResult
 
 __all__ = [
     "ContainerService",
@@ -27,6 +27,7 @@ __all__ = [
     "ConversionError",
     "FileUploader",
     "UploadError",
+    "UploadResult",
     "ContainerError",
     "ContainerErrorType",
     "detect_error_from_output",

@@ -1,11 +1,93 @@
 """File uploader service for files.brokejokes.com (brokejokes-files/ in this repo)."""
 
+import asyncio
 import os
+import re
 import ssl
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable
 
 import httpx
+
+FILES_ORIGIN = "https://files.brokejokes.com"
+# The host's raw-file route; names follow BjFiles.Store's generated format.
+_RAW_FILE_URL = re.compile(
+    re.escape(FILES_ORIGIN) + r"/f/([A-Za-z0-9_-]{8,64}(?:\.[a-z0-9]{1,10})?)"
+)
+
+
+@dataclass(frozen=True)
+class UploadResult:
+    """Where an uploaded file can be reached."""
+
+    url: str  # public share page: what to copy and hand out
+    download_url: str  # the original file's bytes: what to fetch and save
+
+
+def share_url_for_raw_file(url: str) -> str | None:
+    """Share page for one of this host's exact raw `/f/<name>` file URLs.
+
+    Records saved before share pages existed hold the raw file URL. Anything
+    else (other hosts, query strings, other paths) returns None: an arbitrary
+    link has no known share page.
+    """
+    match = _RAW_FILE_URL.fullmatch(url)
+    return f"{FILES_ORIGIN}/s/{match.group(1)}" if match else None
+
+
+def _json_field(response: httpx.Response, key: str) -> object:
+    try:
+        body = response.json()
+    except ValueError:
+        return None
+    return body.get(key) if isinstance(body, dict) else None
+
+
+def _is_http_url(value: object) -> bool:
+    if not isinstance(value, str):
+        return False
+    try:
+        url = httpx.URL(value)
+    except httpx.InvalidURL:
+        return False
+    return url.scheme in ("http", "https") and bool(url.host) and not url.userinfo
+
+
+def _ready_result(response: httpx.Response) -> UploadResult:
+    """The host's final `{url, download_url, ...}` payload."""
+    try:
+        body = response.json()
+    except ValueError:
+        body = None
+    if not isinstance(body, dict):
+        body = {}
+    url = body.get("url")
+    download_url = body.get("download_url")
+    if not (_is_http_url(url) and _is_http_url(download_url)):
+        raise UploadError(f"Unexpected response: {response.text[:100]}")
+    return UploadResult(url=url, download_url=download_url)
+
+
+def _server_detail(response: httpx.Response) -> str:
+    detail = _json_field(response, "error")
+    return f": {detail[:200]}" if isinstance(detail, str) and detail else ""
+
+
+def _preparation_failure(response: httpx.Response) -> str:
+    """Message for a status or upload response that ends the upload."""
+    status = response.status_code
+    if status == 422:
+        return f"Server could not prepare this file{_server_detail(response)}"
+    if status == 504:
+        return "Server timed out preparing the share preview"
+    if status == 503:
+        retry = response.headers.get("Retry-After", "")
+        hint = f"; try again in {retry} seconds" if retry.isdigit() else "; try again shortly"
+        return f"Upload server is busy{hint}"
+    if status == 404:
+        return "Server no longer knows this upload (status not found)"
+    return f"Upload status check failed with status {status}"
 
 
 def _tls_handshake_failed(exc: BaseException) -> ssl.SSLError | None:
@@ -40,8 +122,12 @@ def default_token_path() -> Path:
 class FileUploader:
     """Service for uploading files to files.brokejokes.com."""
 
-    UPLOAD_URL = "https://files.brokejokes.com/upload"
+    UPLOAD_URL = f"{FILES_ORIGIN}/upload"
     TIMEOUT = 600.0  # 10 minutes timeout for large files
+    # Bounds the host's preparation (probe, poster, preview transcode) after the
+    # bytes are in. It runs asynchronously because Cloudflare cuts long requests.
+    PREPARE_TIMEOUT = 30 * 60.0
+    POLL_INTERVAL = 2.0
     PROXY_ENV_VAR = "DL_VIDEO_UPLOAD_PROXY"
     TOKEN_ENV_VAR = "DL_VIDEO_UPLOAD_TOKEN"
 
@@ -55,6 +141,7 @@ class FileUploader:
                 DL_VIDEO_UPLOAD_TOKEN, then ~/.config/dl-video/upload_token.
         """
         self._cancelled = False
+        self._cancel_event = asyncio.Event()
         self._client: httpx.AsyncClient | None = None
         self._proxy = proxy or os.environ.get(self.PROXY_ENV_VAR) or None
         self._token = token or os.environ.get(self.TOKEN_ENV_VAR) or None
@@ -86,26 +173,72 @@ class FileUploader:
             "in ~/.config/dl-video/config.json."
         )
 
+    def _same_origin_as_upload(self, url: str) -> bool:
+        """Whether `url` may receive the bearer token: exactly UPLOAD_URL's origin."""
+        try:
+            candidate, upload = httpx.URL(url), httpx.URL(self.UPLOAD_URL)
+        except httpx.InvalidURL:
+            return False
+        return (
+            candidate.scheme in ("http", "https")
+            and not candidate.userinfo
+            and (candidate.scheme, candidate.host, candidate.port)
+            == (upload.scheme, upload.host, upload.port)
+        )
+
+    async def _pause(self, seconds: float) -> None:
+        """Sleep that cancel() cuts short."""
+        try:
+            await asyncio.wait_for(self._cancel_event.wait(), seconds)
+        except TimeoutError:
+            pass
+        if self._cancelled:
+            raise UploadError("Upload cancelled")
+
+    async def _await_ready(
+        self,
+        client: httpx.AsyncClient,
+        status_url: str,
+        headers: dict[str, str],
+        log: Callable[[str], None],
+    ) -> UploadResult:
+        """Poll the host's status URL until preparation finishes."""
+        log("Server is preparing the share page...")
+        while True:
+            if self._cancelled:
+                raise UploadError("Upload cancelled")
+            await self._pause(self.POLL_INTERVAL)
+            # httpx does not follow redirects here, so the token never leaves the origin.
+            response = await client.get(status_url, headers=headers)
+            if response.status_code == 202:
+                continue
+            if response.status_code == 200:
+                return _ready_result(response)
+            log(f"ERROR: Status {response.status_code} - {response.text[:200]}")
+            raise UploadError(_preparation_failure(response))
+
     async def upload(
         self,
         file_path: Path,
         progress_callback: Callable[[float], None] | None = None,
         verbose_callback: Callable[[str], None] | None = None,
-    ) -> str:
-        """Upload file and return URL.
+    ) -> UploadResult:
+        """Upload a file and wait until the host has prepared its share page.
 
         Args:
             file_path: Path to the file to upload.
             progress_callback: Optional callback for progress updates (0-100).
+                Stays below 100 until the share page is ready.
             verbose_callback: Optional callback for verbose output.
 
         Returns:
-            URL of the uploaded file.
+            The share page URL and the original file's download URL.
 
         Raises:
-            UploadError: If upload fails or is cancelled.
+            UploadError: If upload or preparation fails, times out or is cancelled.
         """
         self._cancelled = False
+        self._cancel_event.clear()
 
         if not file_path.exists():
             raise UploadError(f"File not found: {file_path}")
@@ -115,6 +248,7 @@ class FileUploader:
             raise UploadError("Cannot upload empty file")
 
         token = self._resolve_token()
+        headers = {"Authorization": f"Bearer {token}"}
 
         def log(msg: str) -> None:
             if verbose_callback:
@@ -142,11 +276,11 @@ class FileUploader:
                     response = await client.post(
                         self.UPLOAD_URL,
                         files={"file": (file_path.name, f)},
-                        headers={"Authorization": f"Bearer {token}"},
+                        headers=headers,
                     )
 
                 if progress_callback:
-                    progress_callback(90.0)  # Upload complete
+                    progress_callback(90.0)  # Bytes are in; the host may still be preparing.
 
                 log(f"Server response: {response.status_code}")
 
@@ -154,25 +288,34 @@ class FileUploader:
                     raise UploadError(
                         f"Upload rejected: file too large ({file_size / (1024*1024):.0f} MB)"
                     )
-                if response.status_code not in (200, 201):
+                if response.status_code in (422, 503):
+                    log(f"ERROR: Upload refused - {response.text[:200]}")
+                    raise UploadError(_preparation_failure(response))
+                if response.status_code == 202:
+                    status_url = _json_field(response, "status_url")
+                    if not isinstance(status_url, str) or not self._same_origin_as_upload(status_url):
+                        log(f"ERROR: Unexpected status URL - {response.text[:100]}")
+                        raise UploadError(f"Unexpected response: {response.text[:100]}")
+                    try:
+                        async with asyncio.timeout(self.PREPARE_TIMEOUT):
+                            result = await self._await_ready(client, status_url, headers, log)
+                    except TimeoutError:
+                        raise UploadError(
+                            f"Server still preparing the upload after {self.PREPARE_TIMEOUT / 60:.0f} minutes"
+                        ) from None
+                elif response.status_code in (200, 201):
+                    result = _ready_result(response)
+                else:
                     log(f"ERROR: Upload failed - {response.text[:200]}")
                     raise UploadError(
                         f"Upload failed with status {response.status_code}"
                     )
 
-                try:
-                    url = response.json()["url"]
-                except (ValueError, KeyError, TypeError):
-                    url = None
-                if not isinstance(url, str) or not url.startswith("http"):
-                    log(f"ERROR: Unexpected response - {response.text[:100]}")
-                    raise UploadError(f"Unexpected response: {response.text[:100]}")
-
                 if progress_callback:
                     progress_callback(100.0)
 
-                log(f"Upload complete: {url}")
-                return url
+                log(f"Upload complete: {result.url} (original: {result.download_url})")
+                return result
 
         except httpx.TimeoutException:
             log("ERROR: Upload timed out")
@@ -194,5 +337,6 @@ class FileUploader:
             self._client = None
 
     def cancel(self) -> None:
-        """Cancel the current upload operation."""
+        """Cancel the current upload operation, including waiting for preparation."""
         self._cancelled = True
+        self._cancel_event.set()

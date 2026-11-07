@@ -25,12 +25,12 @@ struct JobDetailView: View {
                         .buttonStyle(BlockButtonStyle(kind: .destructive))
                         .accessibilityIdentifier("cancelJobButton")
                     }
-                    let publicURL = job.uploadUrl.flatMap(URL.init(string:))
-                    if publicURL != nil || job.fileUrl != nil {
-                        SaveToPhoneSection(publicURL: publicURL, serverPath: job.fileUrl, fileName: job.fileName ?? "video.mp4")
+                    let fileURL = job.originalFileURL
+                    if fileURL != nil || job.fileUrl != nil {
+                        SaveToPhoneSection(fileURL: fileURL, serverPath: job.fileUrl, fileName: job.fileName ?? "video.mp4")
                     }
-                    if let publicURL {
-                        UploadLinkSection(url: publicURL)
+                    if let shareURL = job.shareURL {
+                        UploadLinkSection(url: shareURL)
                     }
                     details(job)
                 }

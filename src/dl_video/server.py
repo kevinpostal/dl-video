@@ -212,6 +212,7 @@ def _job_json(job: Job, download_dir: Path) -> dict:
         "file_size": job.file_size,
         "file_url": _file_url(job.output_path, download_dir),
         "upload_url": job.upload_url,
+        "download_url": job.download_url,
         "include_conversion": job.include_conversion,
         "include_upload": job.include_upload,
     }
@@ -224,6 +225,7 @@ def _history_json(record: HistoryRecord, download_dir: Path) -> dict:
         "source_url": record.source_url,
         "file_size": record.file_size,
         "upload_url": record.upload_url,
+        "download_url": record.download_url,
         "timestamp": record.timestamp,
         "title": meta.title if meta else None,
         "thumbnail_url": meta.thumbnail_url if meta else None,

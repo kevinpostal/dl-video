@@ -15,7 +15,7 @@ from dl_video.models import BackendType, Config, Job, OperationState, VideoMetad
 from dl_video.services.container_service import ContainerService
 from dl_video.services.converter import ConversionError, VideoConverter
 from dl_video.services.downloader import DownloadError, VideoDownloader
-from dl_video.services.uploader import FileUploader, UploadError
+from dl_video.services.uploader import FileUploader, UploadError, UploadResult
 from dl_video.utils.history import HistoryManager, HistoryRecord, MetadataRecord
 from dl_video.utils.slugifier import Slugifier
 
@@ -248,7 +248,7 @@ async def run_job(
         file_size = output_path.stat().st_size if output_path.exists() else None
 
         # Phase 4: Upload
-        upload_url: str | None = None
+        upload: UploadResult | None = None
         if job.include_upload or await hooks.prompt_upload(output_path.name):
             job.state = OperationState.UPLOADING
             job.progress = 0
@@ -258,15 +258,16 @@ async def run_job(
                 job.progress = progress
                 hooks.job_updated(job)
 
-            upload_url = await services.uploader.upload(
+            upload = await services.uploader.upload(
                 output_path, upload_progress, hooks.verbose
             )
-            hooks.milestone(f"Uploaded: {upload_url}", url=upload_url)
+            hooks.milestone(f"Uploaded: {upload.url}", url=upload.url)
 
         job.state = OperationState.COMPLETED
         job.progress = 100
         job.output_path = output_path
-        job.upload_url = upload_url
+        job.upload_url = upload.url if upload else None
+        job.download_url = upload.download_url if upload else None
         job.file_size = file_size
 
         record = HistoryRecord.create(
@@ -274,7 +275,7 @@ async def run_job(
             source_url=job.url,
             file_path=output_path,
             file_size=file_size,
-            upload_url=upload_url,
+            upload=upload,
             metadata=metadata_record_from(metadata) if metadata else MetadataRecord(title=job.title),
         )
         history.add(record)

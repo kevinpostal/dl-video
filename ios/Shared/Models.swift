@@ -1,6 +1,6 @@
 import Foundation
 
-struct JobDTO: Codable, Identifiable, Equatable {
+struct JobDTO: Codable, Identifiable, Equatable, UploadLinks {
     let id: String
     let url: String
     let title: String
@@ -13,6 +13,7 @@ struct JobDTO: Codable, Identifiable, Equatable {
     let fileSize: Int?
     let fileUrl: String?
     let uploadUrl: String?
+    let downloadUrl: String?
     let includeConversion: Bool
     let includeUpload: Bool
 
@@ -50,11 +51,12 @@ struct ServerConfig: Codable, Equatable {
     var skipConversion: Bool
 }
 
-struct HistoryItem: Codable, Identifiable, Hashable {
+struct HistoryItem: Codable, Identifiable, Hashable, UploadLinks {
     let filename: String
     let sourceUrl: String
     let fileSize: Int?
     let uploadUrl: String?
+    let downloadUrl: String?
     let timestamp: String
     let title: String?
     let thumbnailUrl: String?
@@ -79,6 +81,28 @@ struct HistoryItem: Codable, Identifiable, Hashable {
 
 struct HistoryResponse: Codable {
     let items: [HistoryItem]
+}
+
+/// An upload's public links: `uploadUrl` is the share page (copy and share it),
+/// `downloadUrl` the original file (fetch and save it).
+protocol UploadLinks {
+    var uploadUrl: String? { get }
+    var downloadUrl: String? { get }
+}
+
+extension UploadLinks {
+    var shareURL: URL? { uploadUrl.flatMap(URL.init(string:)) }
+
+    /// The original file. Servers from before share pages send no downloadUrl;
+    /// then uploadUrl is used only when it is exactly the file host's raw-file
+    /// link (names as BjFiles.Store generates them), never a page or other host.
+    var originalFileURL: URL? {
+        if let downloadUrl { return URL(string: downloadUrl) }
+        guard let uploadUrl,
+              uploadUrl.wholeMatch(of: #/https://files\.brokejokes\.com/f/[A-Za-z0-9_-]{8,64}(\.[a-z0-9]{1,10})?/#) != nil
+        else { return nil }
+        return URL(string: uploadUrl)
+    }
 }
 
 struct HealthResponse: Codable {

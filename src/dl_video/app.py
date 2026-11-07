@@ -651,8 +651,13 @@ class VideoDetailScreen(ModalScreen[None]):
             
             if entry.upload_url:
                 with Horizontal(classes="detail-row"):
-                    yield Label("Upload URL:", classes="detail-label")
+                    yield Label("Share URL:", classes="detail-label")
                     yield Label(entry.upload_url, classes="detail-value")
+
+            if entry.download_url and entry.download_url != entry.upload_url:
+                with Horizontal(classes="detail-row"):
+                    yield Label("Download URL:", classes="detail-label")
+                    yield Label(entry.download_url, classes="detail-value")
             
             with Horizontal(classes="buttons"):
                 yield Button("Close", id="close-btn", variant="primary")
@@ -882,6 +887,7 @@ class DLVideoApp(App):
                 file_path=Path(record.file_path),
                 source_url=record.source_url,
                 upload_url=record.upload_url,
+                download_url=record.download_url,
                 file_size=record.file_size,
                 metadata=record.metadata,
                 from_history=True,
@@ -1265,6 +1271,7 @@ class DLVideoApp(App):
                     file_path=Path(record.file_path),
                     source_url=record.source_url,
                     upload_url=record.upload_url,
+                    download_url=record.download_url,
                     file_size=record.file_size,
                     metadata=record.metadata,
                 )

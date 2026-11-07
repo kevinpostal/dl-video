@@ -36,10 +36,11 @@ class HistoryEntry:
     filename: str
     file_path: Path
     source_url: str
-    upload_url: str | None
+    upload_url: str | None  # public share page
     file_size: int | None
     timestamp: datetime
     metadata: MetadataRecord | None = None
+    download_url: str | None = None  # original file
 
 
 class LogLine(Horizontal):
@@ -395,6 +396,7 @@ class LogHistoryPanel(Container):
         file_path: Path,
         source_url: str = "",
         upload_url: str | None = None,
+        download_url: str | None = None,
         file_size: int | None = None,
         metadata: MetadataRecord | None = None,
         from_history: bool = False,
@@ -409,6 +411,7 @@ class LogHistoryPanel(Container):
             file_path=file_path,
             source_url=source_url,
             upload_url=upload_url,
+            download_url=download_url,
             file_size=file_size,
             timestamp=datetime.now(),
             metadata=metadata,

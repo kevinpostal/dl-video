@@ -3,10 +3,11 @@ import SwiftUI
 
 /// Gets a finished video onto the phone. "Save to Photos" downloads and saves in
 /// one tap; once the file is local it can also be shared or saved to Files.
-/// The public upload (files.brokejokes.com) is preferred: it works without the
-/// tailnet. The Mac server's copy is the fallback for jobs that weren't uploaded.
+/// The uploaded original (files.brokejokes.com/f/…, never the share page) is
+/// preferred: it works without the tailnet. The Mac server's copy is the
+/// fallback for jobs that weren't uploaded.
 struct SaveToPhoneSection: View {
-    let publicURL: URL?
+    let fileURL: URL?
     let serverPath: String?
     let fileName: String
 
@@ -71,12 +72,12 @@ struct SaveToPhoneSection: View {
         }
     }
 
-    /// Public copy first; on failure (old/expired upload hosts) the Mac's copy.
+    /// Uploaded original first; on failure (old/expired upload hosts) the Mac's copy.
     private func fetch() async throws -> URL {
-        if let publicURL {
+        if let fileURL {
             do {
                 // No Authorization header: the Mac token must not leak to another host.
-                let (location, response) = try await URLSession.shared.download(from: publicURL)
+                let (location, response) = try await URLSession.shared.download(from: fileURL)
                 if let http = response as? HTTPURLResponse, !(200..<300).contains(http.statusCode) {
                     throw APIError.server(status: http.statusCode, message: HTTPURLResponse.localizedString(forStatusCode: http.statusCode))
                 }

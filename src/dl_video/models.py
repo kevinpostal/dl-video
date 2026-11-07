@@ -43,7 +43,8 @@ class Job:
     status_message: str = ""
     error_message: str | None = None
     output_path: Path | None = None
-    upload_url: str | None = None
+    upload_url: str | None = None  # public share page
+    download_url: str | None = None  # original uploaded file
     file_size: int | None = None
     include_conversion: bool = True
     include_upload: bool = False
